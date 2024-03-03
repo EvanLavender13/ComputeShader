@@ -19,9 +19,11 @@ import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
 import static org.lwjgl.glfw.GLFW.glfwSetKeyCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowShouldClose;
 import static org.lwjgl.glfw.GLFW.glfwWindowHint;
+import static org.lwjgl.opengl.GL11.GL_GREATER;
 import static org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
+import static org.lwjgl.opengl.GL11.glAlphaFunc;
 import static org.lwjgl.opengl.GL11.glBindTexture;
 import static org.lwjgl.opengl.GL11.glEnable;
 import static org.lwjgl.opengl.GL11.glGenTextures;
@@ -89,6 +91,7 @@ import imgui.app.Application;
 import imgui.app.Configuration;
 
 // https://www.lwjgl.org/guide
+// https://github.com/LWJGL/lwjgl3-demos/blob/main/src/org/lwjgl/demo/opengl/raytracing/tutorial/Tutorial1.java
 
 public class App extends Application {
     private static final Logger logger = LogManager.getLogger();
@@ -168,8 +171,8 @@ public class App extends Application {
             }
         });
 
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // glEnable(GL_BLEND);
+        // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         // glAlphaFunc(GL_GREATER, 0.1f);
 
         initFrameBufferTexture();
