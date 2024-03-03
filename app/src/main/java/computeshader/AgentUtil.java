@@ -25,9 +25,9 @@ public class AgentUtil {
     public static float[] nAgents(int n, int width, int height) {
         float[] agents = new float[n * AGENT_SIZE_F];
 
-        Color colorA = Color.CYAN;
-        Color colorB = Color.MAGENTA;
-        Color colocC = Color.YELLOW;
+        Color colorA = Color.RED;
+        Color colorB = Color.GREEN;
+        Color colocC = Color.BLUE;
 
         for (int i = 0; i < n; i++) {
             agents[i * AGENT_SIZE_F + 0] = (float) (Math.random() * width);

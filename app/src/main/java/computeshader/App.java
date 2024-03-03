@@ -171,9 +171,9 @@ public class App extends Application {
             }
         });
 
-        // glEnable(GL_BLEND);
-        // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        // glAlphaFunc(GL_GREATER, 0.1f);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glAlphaFunc(GL_GREATER, 0.1f);
 
         initFrameBufferTexture();
         initFrameBufferSampler();
@@ -189,7 +189,7 @@ public class App extends Application {
 
     @Override
     public void process() {
-        if (ImGui.sliderFloat("Sensing Distance", sensingDistanceParameter, 0.0f, 100.0f)) {
+        if (ImGui.sliderFloat("Sensing Distance", sensingDistanceParameter, 0.0f, 256.0f)) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 2 * Float.BYTES, sensingDistanceParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -201,7 +201,7 @@ public class App extends Application {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }
 
-        if (ImGui.sliderAngle("Turning Angle", turningAngleParameter, 0.0f, 145.0f)) {
+        if (ImGui.sliderAngle("Turning Angle", turningAngleParameter, 0.0f, 360.0f)) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 4 * Float.BYTES, turningAngleParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -219,7 +219,7 @@ public class App extends Application {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }
 
-        if (ImGui.sliderFloat("Step Size", stepSizeParameter, 0.0f, 50.0f)) {
+        if (ImGui.sliderFloat("Step Size", stepSizeParameter, 0.0f, 100.0f)) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 7 * Float.BYTES, stepSizeParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
