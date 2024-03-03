@@ -242,9 +242,9 @@ public class App extends Application {
                     trailMapTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
                     width, height, 1);
 
-            // glCopyImageSubData(agentMapOutTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
-            // agentMapTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
-            // width, height, 1);
+            glCopyImageSubData(agentMapOutTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
+                    agentMapTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
+                    width, height, 1);
 
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
             glUniform1ui(computeShaderStageUniform, 1);
@@ -267,7 +267,7 @@ public class App extends Application {
         glUseProgram(displayShaderProgram);
         {
             glBindVertexArray(vertexArrayObject);
-            glBindTexture(GL_TEXTURE_2D, trailMapOutTexture);
+            glBindTexture(GL_TEXTURE_2D, trailMapTexture);
             glBindSampler(0, frameBufferSampler);
             glDrawArrays(GL_TRIANGLES, 0, 3);
             glBindSampler(0, 0);
@@ -384,7 +384,7 @@ public class App extends Application {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderAgentsBuffer);
 
         logger.info("Creating {} agents", numAgents);
-        float[] computeShaderAgents = AgentUtil.nAgentsOneColor(numAgents, width, height, new Color(1.0f, 0.0f, 1.0f));
+        float[] computeShaderAgents = AgentUtil.nAgentsOneColor(numAgents, width, height, Color.WHITE);
 
         glBufferData(GL_SHADER_STORAGE_BUFFER, computeShaderAgents, GL_DYNAMIC_COPY);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, computeShaderAgentsBuffer);

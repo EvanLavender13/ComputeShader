@@ -106,8 +106,8 @@ void main() {
         );
         ivec2 new_pixel = ivec2(int(new_position.x), int(new_position.y));
 
-        //vec4 agentMapV = imageLoad(agentMap, pixel);
-        //vec4 agentMapNewV = imageLoad(agentMap, new_pixel);
+        vec4 agentMapV = imageLoad(agentMap, pixel);
+        vec4 agentMapNewV = imageLoad(agentMap, new_pixel);
         vec4 trailMapV = imageLoad(trailMap, pixel);
         vec4 trailMapNewV = imageLoad(trailMap, new_pixel);
 
@@ -116,7 +116,7 @@ void main() {
         vec4 new_color = full_color * depositAmount;
         vec4 new_value = trailMapV + new_color;
 
-        // imageStore(agentMapOut, new_pixel, agentMapNewV + 1.0f);
+        imageStore(agentMapOut, new_pixel, agentMapNewV + 1.0f);
         imageStore(trailMapOut, new_pixel, new_value);
 
         agents[gid].x = new_position.x;
@@ -144,6 +144,6 @@ void main() {
         float decayAmount = 1.0f - params.decayAmount;
         vec4 v = sum / n;
         imageStore(trailMapOut, pixel,  v * decayAmount);
-        // imageStore(agentMapOut, pixel, vec4(0.0f));
+        imageStore(agentMapOut, pixel, vec4(0.0f));
     }
 }
