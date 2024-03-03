@@ -96,8 +96,8 @@ import imgui.app.Configuration;
 public class App extends Application {
     private static final Logger logger = LogManager.getLogger();
 
-    private int width = 1600 * 2;
-    private int height = 900 * 2;
+    private int width = 1920 * 2;
+    private int height = 1080 * 2;
 
     private int agentMapTexture;
     private int agentMapTextureBinding;
@@ -142,7 +142,7 @@ public class App extends Application {
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         this.colorBg.set(0.0f, 0.0f, 0.0f, 1.0f);
 
-        numAgents = (int) pow(2, 24);
+        numAgents = (int) pow(2, 23);
 
         sensingDistanceParameter = new float[1];
         sensingDistanceParameter[0] = 10.0f;
@@ -207,7 +207,7 @@ public class App extends Application {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }
 
-        if (ImGui.sliderFloat("Deposit Amount", depositAmountParameter, 0.01f, 2.0f)) {
+        if (ImGui.sliderFloat("Deposit Amount", depositAmountParameter, 0.01f, 1.0f)) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 5 * Float.BYTES, depositAmountParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);

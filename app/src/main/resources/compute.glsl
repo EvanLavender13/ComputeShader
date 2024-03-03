@@ -1,6 +1,6 @@
 #version 460 core
 
-layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 layout (binding = 0, rgba32f) uniform image2D agentMap;
 layout (binding = 1, rgba32f) uniform image2D agentMapOut;
@@ -44,6 +44,24 @@ float hash(uint state) {
     return state / 4294967295.0;
 }
 
+// https://stackoverflow.com/a/17897228
+vec3 rgb2hsv(vec3 c) {
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+// All components are in the range [0…1], including hue.
+vec3 hsv2rgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
 // https://github.com/erlingpaulsen/godot-physarum/blob/main/physarum_compute_shader.glsl
 
 void main() {
@@ -80,14 +98,20 @@ void main() {
         vec4 sensor_left_color = imageLoad(trailMap, sensor_left_pos);
         vec4 sensor_right_color = imageLoad(trailMap, sensor_right_pos);
 
-        vec4 color = vec4(agents[gid].r, agents[gid].g, agents[gid].b, 0.0f);
-        float sensor_front_v = -pow(dot(color, sensor_front_color), 2);
-        float sensor_left_v = -pow(dot(color, sensor_left_color), 2);
-        float sensor_right_v = -pow(dot(color, sensor_right_color), 2);
+        vec3 sensor_front_hsv = rgb2hsv(sensor_front_color.rgb);
+        vec3 sensor_left_hsv = rgb2hsv(sensor_left_color.rgb);
+        vec3 sensor_right_hsv = rgb2hsv(sensor_right_color.rgb);
 
-        float rnd = rand(angle);
+        vec4 color = vec4(agents[gid].r, agents[gid].g, agents[gid].b, 0.0f);
+        vec3 color_hsv = rgb2hsv(color.rgb);
+        float sensor_front_v = abs(color_hsv.x - sensor_front_hsv.x);
+        float sensor_left_v = abs(color_hsv.x - sensor_left_hsv.x);
+        float sensor_right_v = abs(color_hsv.x - sensor_right_hsv.x);
+
+        float rnd = hash(gid);
         float turningAngle = params.turningAngle;
-        if ((sensor_left_v > sensor_front_v) && (sensor_right_v > sensor_front_v)) {
+        
+        if ((sensor_left_v < sensor_front_v) && (sensor_right_v < sensor_front_v)) {
             if (rnd < 0.5) {
                 angle += turningAngle;
             } else {
@@ -129,8 +153,8 @@ void main() {
 
         int y = int(gid / params.frameBufferWidth);
         int x = int(mod(float(gid), width));
-        int k = int(5 / 2);
-        float n = pow(5, 2);
+        int k = int(3 / 2);
+        float n = pow(3, 2);
         vec4 sum = vec4(0.0f);
         for (int i = -k; i < k + 1; i++) {
             for (int j = -k; j < k + 1; j++) {
@@ -140,7 +164,6 @@ void main() {
         }
 
         ivec2 pixel = ivec2(x, y);
-        //vec3 color = imageLoad(currentFrameBuffer, pixel).rgb;
         float decayAmount = 1.0f - params.decayAmount;
         vec4 v = sum / n;
         imageStore(trailMapOut, pixel,  v * decayAmount);
