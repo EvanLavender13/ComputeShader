@@ -384,7 +384,7 @@ public class App extends Application {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderAgentsBuffer);
 
         logger.info("Creating {} agents", numAgents);
-        float[] computeShaderAgents = AgentUtil.nAgentsOneColor(numAgents, width, height, Color.WHITE);
+        float[] computeShaderAgents = AgentUtil.nAgents(numAgents, width, height);
 
         glBufferData(GL_SHADER_STORAGE_BUFFER, computeShaderAgents, GL_DYNAMIC_COPY);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, computeShaderAgentsBuffer);
