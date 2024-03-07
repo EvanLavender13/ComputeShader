@@ -33,18 +33,19 @@ layout (std430) restrict buffer Agents {
 uniform uint Stage;
 uniform float Time;
 
-float rand(float n) {
-    return fract(sin(n) * 43758.5453123f);
-}
-
-float hash(uint state) {
+// Hash function www.cs.ubc.ca/~rbridson/docs/schechter-sca08-turbulence.pdf
+uint hash(uint state) {
     state ^= 2747636419u;
     state *= 2654435769u;
     state ^= state >> 16;
     state *= 2654435769u;
     state ^= state >> 16;
     state *= 2654435769u;
-    return state / 4294967295.0f;
+    return state;
+}
+
+float scaleToRange01(uint state) {
+    return state / 4294967295.0;
 }
 
 // https://stackoverflow.com/a/17897228
@@ -69,21 +70,52 @@ float sigmoid(float x) {
     return 1.0 / (1.0 + exp(x)); 
 }
 
-vec4 sense(ivec2 position, vec4 color) {
-    /*
-    if (position.x > 0 && position.x < params.frameBufferWidth && position.y > 0 && position.y < params.frameBufferHeight) {
-        return imageLoad(TrailMap, position);
-    } else {
-        return color;
-    }
-    */
+float sense(Agent agent, float sensorAngleOffset) {
+    float sensorAngle = agent.angle + sensorAngleOffset;
+    vec2 sensorDirection = vec2(cos(sensorAngle), sin(sensorAngle));
 
-    return imageLoad(TrailMap, position);
+    vec2 position = vec2(agent.x, agent.y);
+    float sensorDistance = params.sensingDistance;
+    vec2 sensorPosition = position + sensorDirection * sensorDistance;
+    uint sensorCenterX = uint(sensorPosition.x);
+    uint sensorCenterY = uint(sensorPosition.y);
+
+    vec4 color = vec4(agent.r, agent.g, agent.b, 0.0f);
+    vec3 colorHsv = rgb2hsv(color.rgb);
+
+    float sum = 0.0f;
+
+    for (int offsetX = -1; offsetX <= 1; offsetX++) {
+        for (int offsetY = -1; offsetY <= 1; offsetY++) {
+            uint sampleX = uint(min(params.frameBufferWidth - 1, max(0, sensorCenterX + offsetX)));
+            uint sampleY = uint(min(params.frameBufferHeight - 1, max(0, sensorCenterY + offsetY)));
+            sum += rgb2hsv(imageLoad(TrailMap, ivec2(sampleX, sampleY)).rgb).x;
+        }
+    }
+ 
+    return 0.0f;
 }
 
 // https://github.com/erlingpaulsen/godot-physarum/blob/main/physarum_compute_shader.glsl
 
 void main() {
+    uint id = uint(gl_GlobalInvocationID.x);
+    
+    Agent agent = agents[id];
+    vec2 pos = vec2(agent.x, agent.y);
+
+    uint width = uint(params.frameBufferWidth);
+    uint height = uint(params.frameBufferHeight);
+    uint random = hash(uint(pos.y * width + pos.x + hash(uint(id + Time * 100000))));
+
+    float sensorAngle = params.sensingAngle;
+    float weightForward = sense(agent, 0);
+    float weightLeft = sense(agent, sensorAngle);
+    float weightRight = sense(agent, -sensorAngle);
+
+
+
+    /*
     uint gid = uint(gl_GlobalInvocationID.x);
     uint width = uint(params.frameBufferWidth);
     uint height = uint(params.frameBufferHeight);
@@ -154,7 +186,6 @@ void main() {
             mod(agents[gid].y + stepSize * sin(angle), height)
         );
 
-        /*
         if (new_position.x <= 0 || new_position.x >= width || new_position.y <= 0 || new_position.y >= height) {
             //new_position.x = min(width - 1.0f, max(0.0f, new_position.x));
             //new_position.y = min(height - 1.0f, max(0.0f, new_position.y));
@@ -178,7 +209,6 @@ void main() {
             //angle = -angle;
             angle = rnd * 2.0f * M_PI;         
         }
-        */
 
         ivec2 new_pixel = ivec2(int(new_position.x), int(new_position.y));
 
@@ -221,4 +251,5 @@ void main() {
         imageStore(TrailMapOut, pixel,  v * decayAmount);
         imageStore(AgentMapOut, pixel, vec4(0.0f));
     }
+    */
 }

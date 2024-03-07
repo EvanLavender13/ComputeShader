@@ -16,6 +16,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
 import static org.lwjgl.glfw.GLFW.GLFW_RESIZABLE;
 import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
 import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
+import static org.lwjgl.glfw.GLFW.glfwGetTime;
 import static org.lwjgl.glfw.GLFW.glfwSetKeyCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowShouldClose;
 import static org.lwjgl.glfw.GLFW.glfwWindowHint;
@@ -54,6 +55,7 @@ import static org.lwjgl.opengl.GL20C.glGetUniformLocation;
 import static org.lwjgl.opengl.GL20C.glGetUniformiv;
 import static org.lwjgl.opengl.GL20C.glLinkProgram;
 import static org.lwjgl.opengl.GL20C.glShaderSource;
+import static org.lwjgl.opengl.GL20C.glUniform1f;
 import static org.lwjgl.opengl.GL20C.glUseProgram;
 import static org.lwjgl.opengl.GL30C.GL_RGBA32F;
 import static org.lwjgl.opengl.GL30C.glBindBufferBase;
@@ -68,13 +70,15 @@ import static org.lwjgl.opengl.GL42C.GL_ALL_BARRIER_BITS;
 import static org.lwjgl.opengl.GL42C.glBindImageTexture;
 import static org.lwjgl.opengl.GL42C.glMemoryBarrier;
 import static org.lwjgl.opengl.GL42C.glTexStorage2D;
+import static org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BLOCK;
+import static org.lwjgl.opengl.GL43.glGetProgramResourceIndex;
+import static org.lwjgl.opengl.GL43.glShaderStorageBlockBinding;
 import static org.lwjgl.opengl.GL43C.GL_COMPUTE_SHADER;
 import static org.lwjgl.opengl.GL43C.GL_COMPUTE_WORK_GROUP_SIZE;
 import static org.lwjgl.opengl.GL43C.GL_SHADER_STORAGE_BUFFER;
 import static org.lwjgl.opengl.GL43C.glCopyImageSubData;
 import static org.lwjgl.opengl.GL43C.glDispatchCompute;
 
-import java.awt.Color;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.IntBuffer;
@@ -86,6 +90,7 @@ import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.Version;
 
+import computeshader.slime.AgentUtil;
 import imgui.ImGui;
 import imgui.app.Application;
 import imgui.app.Configuration;
@@ -96,8 +101,12 @@ import imgui.app.Configuration;
 public class App extends Application {
     private static final Logger logger = LogManager.getLogger();
 
-    private int width = 1920 * 2;
-    private int height = 1080 * 2;
+    private int width = 1920;
+    private int height = 1080;
+    private double currentTime = glfwGetTime();
+    private double previousFrameTime = 0.0;
+    private int fps = 0;
+    private int frameCount = 0;
 
     private int agentMapTexture;
     private int agentMapTextureBinding;
@@ -114,6 +123,7 @@ public class App extends Application {
     private int computeShaderParametersBuffer;
     private float[] computeShaderParameters;
     private int computeShaderStageUniform;
+    private int computeShaderTimeUniform;
     private int displayShaderProgram;
 
     private int workGroupSizeX;
@@ -154,10 +164,10 @@ public class App extends Application {
         turningAngleParameter[0] = (float) toRadians(45.0f);
 
         depositAmountParameter = new float[1];
-        depositAmountParameter[0] = 0.1f;
+        depositAmountParameter[0] = 0.01f;
 
         decayAmountParameter = new float[1];
-        decayAmountParameter[0] = 0.1f;
+        decayAmountParameter[0] = 0.008f;
 
         stepSizeParameter = new float[1];
         stepSizeParameter[0] = 1.0f;
@@ -189,7 +199,23 @@ public class App extends Application {
 
     @Override
     public void process() {
+        currentTime = glfwGetTime();
+        frameCount++;
+
+        double elapsedTime = currentTime - previousFrameTime;
+
+        if (elapsedTime >= 1.0) {
+            previousFrameTime = currentTime;
+            fps = frameCount;
+            frameCount = 0;
+        }
+
+        ImGui.text("FPS:   : " + fps);
+        ImGui.text("Runtime: " + currentTime);
+        ImGui.text("Particle Count: " + numAgents);
+
         if (ImGui.sliderFloat("Sensing Distance", sensingDistanceParameter, 0.0f, 256.0f)) {
+            sensingDistanceParameter[0] = (float) Math.floor(sensingDistanceParameter[0]);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 2 * Float.BYTES, sensingDistanceParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -220,10 +246,11 @@ public class App extends Application {
         }
 
         if (ImGui.sliderFloat("Step Size", stepSizeParameter, 0.0f, 100.0f)) {
+            stepSizeParameter[0] = (float) Math.floor(stepSizeParameter[0]);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 7 * Float.BYTES, stepSizeParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-        }
+        }    
 
         doCompute();
     }
@@ -238,6 +265,8 @@ public class App extends Application {
 
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
             glUniform1ui(computeShaderStageUniform, 0);
+            glUniform1f(computeShaderTimeUniform, (float) currentTime);
+            glUniform1ui(0, GL_SHADER_STORAGE_BUFFER);
             glDispatchCompute(numAgents / workGroupSizeX, 1, 1);
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
@@ -349,17 +378,19 @@ public class App extends Application {
             logger.debug("Work group size: [x {}, y {}, z {}]", workGroupSizeX, workGroupSizeY, workGroupSizeZ);
 
             IntBuffer parameters = BufferUtils.createIntBuffer(4);
-            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "agentMap"), parameters);
+            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "AgentMap"), parameters);
             agentMapTextureBinding = parameters.get();
-            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "agentMapOut"), parameters);
+            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "AgentMapOut"), parameters);
             agentMapOutTextureBinding = parameters.get();
-            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "trailMap"), parameters);
+            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "TrailMap"), parameters);
             trailMapTextureBinding = parameters.get();
-            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "trailMapOut"), parameters);
+            glGetUniformiv(computeShaderProgram, glGetUniformLocation(computeShaderProgram, "TrailMapOut"), parameters);
             trailMapOutTextureBinding = parameters.get();
 
-            computeShaderStageUniform = glGetUniformLocation(computeShaderProgram, "stage");
+            computeShaderStageUniform = glGetUniformLocation(computeShaderProgram, "Stage");
             logger.debug("Stage uniform location: {}", computeShaderStageUniform);
+            computeShaderTimeUniform = glGetUniformLocation(computeShaderProgram, "Time");
+            logger.debug("Time uniform location: {}", computeShaderTimeUniform);
         }
         glUseProgram(0);
     }
@@ -387,10 +418,13 @@ public class App extends Application {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderAgentsBuffer);
 
         logger.info("Creating {} agents", numAgents);
-        float[] computeShaderAgents = AgentUtil.nAgents(numAgents, width, height);
+        float[] computeShaderAgents = AgentUtil.nAgentsHueGradient(numAgents, width, height);
+
+        int bufferLocation = glGetProgramResourceIndex(computeShaderProgram, GL_SHADER_STORAGE_BLOCK, "Agents");
+        glShaderStorageBlockBinding(computeShaderProgram, bufferLocation, bufferLocation);
 
         glBufferData(GL_SHADER_STORAGE_BUFFER, computeShaderAgents, GL_DYNAMIC_COPY);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, computeShaderAgentsBuffer);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bufferLocation, computeShaderAgentsBuffer);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
 
