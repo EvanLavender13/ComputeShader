@@ -101,12 +101,11 @@ import imgui.app.Configuration;
 public class App extends Application {
     private static final Logger logger = LogManager.getLogger();
 
-    private int width = 1920;
-    private int height = 1080;
+    private int width = 1920 * 2;
+    private int height = 1080 * 2;
     private double currentTime = glfwGetTime();
     private double previousFrameTime = 0.0;
-    private int fps = 0;
-    private int frameCount = 0;
+    private double deltaTime = 0.0;
 
     private int agentMapTexture;
     private int agentMapTextureBinding;
@@ -124,6 +123,7 @@ public class App extends Application {
     private float[] computeShaderParameters;
     private int computeShaderStageUniform;
     private int computeShaderTimeUniform;
+    private int computeShaderDeltaUniform;
     private int displayShaderProgram;
 
     private int workGroupSizeX;
@@ -133,6 +133,7 @@ public class App extends Application {
     private float[] sensingAngleParameter;
     private float[] turningAngleParameter;
     private float[] depositAmountParameter;
+    private float[] diffuseAmountParameter;
     private float[] decayAmountParameter;
     private float[] stepSizeParameter;
 
@@ -152,10 +153,10 @@ public class App extends Application {
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         this.colorBg.set(0.0f, 0.0f, 0.0f, 1.0f);
 
-        numAgents = (int) pow(2, 23);
+        numAgents = (int) pow(2, 20);
 
         sensingDistanceParameter = new float[1];
-        sensingDistanceParameter[0] = 10.0f;
+        sensingDistanceParameter[0] = 50.0f;
 
         sensingAngleParameter = new float[1];
         sensingAngleParameter[0] = (float) toRadians(45.0f);
@@ -164,13 +165,16 @@ public class App extends Application {
         turningAngleParameter[0] = (float) toRadians(45.0f);
 
         depositAmountParameter = new float[1];
-        depositAmountParameter[0] = 0.01f;
+        depositAmountParameter[0] = 1.0f;
+
+        diffuseAmountParameter = new float[1];
+        diffuseAmountParameter[0] = 0.5f;
 
         decayAmountParameter = new float[1];
-        decayAmountParameter[0] = 0.008f;
+        decayAmountParameter[0] = 0.5f;
 
         stepSizeParameter = new float[1];
-        stepSizeParameter[0] = 1.0f;
+        stepSizeParameter[0] = 100.0f;
     }
 
     @Override
@@ -200,21 +204,14 @@ public class App extends Application {
     @Override
     public void process() {
         currentTime = glfwGetTime();
-        frameCount++;
+        deltaTime = currentTime - previousFrameTime;
+        previousFrameTime = currentTime;
 
-        double elapsedTime = currentTime - previousFrameTime;
-
-        if (elapsedTime >= 1.0) {
-            previousFrameTime = currentTime;
-            fps = frameCount;
-            frameCount = 0;
-        }
-
-        ImGui.text("FPS:   : " + fps);
         ImGui.text("Runtime: " + currentTime);
+        ImGui.text("Delta  : " + deltaTime);
         ImGui.text("Particle Count: " + numAgents);
 
-        if (ImGui.sliderFloat("Sensing Distance", sensingDistanceParameter, 0.0f, 256.0f)) {
+        if (ImGui.sliderFloat("Sensing Distance", sensingDistanceParameter, 1.0f, 1000.0f)) {
             sensingDistanceParameter[0] = (float) Math.floor(sensingDistanceParameter[0]);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 2 * Float.BYTES, sensingDistanceParameter);
@@ -227,7 +224,7 @@ public class App extends Application {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }
 
-        if (ImGui.sliderAngle("Turning Angle", turningAngleParameter, 0.0f, 360.0f)) {
+        if (ImGui.sliderAngle("Turning Angle", turningAngleParameter, 0.0f, 180.0f)) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
             glBufferSubData(GL_SHADER_STORAGE_BUFFER, 4 * Float.BYTES, turningAngleParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -239,16 +236,22 @@ public class App extends Application {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }
 
-        if (ImGui.sliderFloat("Decay Amount", decayAmountParameter, 0.0f, 1.0f)) {
+        if (ImGui.sliderFloat("Diffuse Amount", diffuseAmountParameter, 0.0f, 1.0f)) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
-            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 6 * Float.BYTES, decayAmountParameter);
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 6 * Float.BYTES, diffuseAmountParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }
 
-        if (ImGui.sliderFloat("Step Size", stepSizeParameter, 0.0f, 100.0f)) {
+        if (ImGui.sliderFloat("Decay Amount", decayAmountParameter, 0.0f, 1.0f)) {
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 7 * Float.BYTES, decayAmountParameter);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        }
+
+        if (ImGui.sliderFloat("Step Size", stepSizeParameter, 0.0f, 10000.0f)) {
             stepSizeParameter[0] = (float) Math.floor(stepSizeParameter[0]);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderParametersBuffer);
-            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 7 * Float.BYTES, stepSizeParameter);
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 8 * Float.BYTES, stepSizeParameter);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         }    
 
@@ -266,6 +269,7 @@ public class App extends Application {
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
             glUniform1ui(computeShaderStageUniform, 0);
             glUniform1f(computeShaderTimeUniform, (float) currentTime);
+            glUniform1f(computeShaderDeltaUniform, (float) deltaTime);
             glUniform1ui(0, GL_SHADER_STORAGE_BUFFER);
             glDispatchCompute(numAgents / workGroupSizeX, 1, 1);
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -391,6 +395,8 @@ public class App extends Application {
             logger.debug("Stage uniform location: {}", computeShaderStageUniform);
             computeShaderTimeUniform = glGetUniformLocation(computeShaderProgram, "Time");
             logger.debug("Time uniform location: {}", computeShaderTimeUniform);
+            computeShaderDeltaUniform = glGetUniformLocation(computeShaderProgram, "Delta");
+            logger.debug("Delta uniform location: {}", computeShaderDeltaUniform);
         }
         glUseProgram(0);
     }
@@ -406,6 +412,7 @@ public class App extends Application {
                 sensingAngleParameter[0],
                 turningAngleParameter[0],
                 depositAmountParameter[0],
+                diffuseAmountParameter[0],
                 decayAmountParameter[0],
                 stepSizeParameter[0]
         };
@@ -418,7 +425,7 @@ public class App extends Application {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, computeShaderAgentsBuffer);
 
         logger.info("Creating {} agents", numAgents);
-        float[] computeShaderAgents = AgentUtil.nAgentsHueGradient(numAgents, width, height);
+        float[] computeShaderAgents = AgentUtil.nAgentsRainbow(numAgents, width, height);
 
         int bufferLocation = glGetProgramResourceIndex(computeShaderProgram, GL_SHADER_STORAGE_BLOCK, "Agents");
         glShaderStorageBlockBinding(computeShaderProgram, bufferLocation, bufferLocation);

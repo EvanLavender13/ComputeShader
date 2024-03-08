@@ -2,7 +2,7 @@
 
 #define M_PI 3.1415926535897932384626433832795
 
-layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 
 layout (binding = 0, rgba32f) uniform image2D AgentMap;
 layout (binding = 1, rgba32f) uniform image2D AgentMapOut;
@@ -16,6 +16,7 @@ layout (binding = 4, std430) restrict buffer ShaderParameters {
     float sensingAngle;
     float turningAngle;
     float depositAmount;
+    float diffuseAmount;
     float decayAmount;
     float stepSize;
 } params;
@@ -32,19 +33,25 @@ layout (std430) restrict buffer Agents {
 
 uniform uint Stage;
 uniform float Time;
+uniform float Delta;
 
 float rand(float n) {
     return fract(sin(n) * 43758.5453123f);
 }
 
-float hash(uint state) {
+// Hash function www.cs.ubc.ca/~rbridson/docs/schechter-sca08-turbulence.pdf
+uint hash(uint state) {
     state ^= 2747636419u;
     state *= 2654435769u;
     state ^= state >> 16;
     state *= 2654435769u;
     state ^= state >> 16;
     state *= 2654435769u;
-    return state / 4294967295.0f;
+    return state;
+}
+
+float scaleToRange01(uint state) {
+    return state / 4294967295.0;
 }
 
 // https://stackoverflow.com/a/17897228
@@ -95,11 +102,10 @@ void main() {
         vec2 position = vec2(agents[gid].x, agents[gid].y);
         ivec2 pixel = ivec2(int(position.x), int(position.y));
 
-        //float rnd = hash(pixel.y * width + pixel.x * height);
-        float rnd = rand(angle);
+        float rnd = scaleToRange01(hash(pixel.y * width + pixel.x + hash(gid + int(Time) * 100000)));
 
         float sensingDistance = params.sensingDistance;
-        float sensingAngle = params.sensingAngle / 2.0f;
+        float sensingAngle = params.sensingAngle;
         vec2 sensor_front = vec2(
             mod(position.x + sensingDistance * cos(angle), width), 
             mod(position.y + sensingDistance * sin(angle), height)
@@ -118,67 +124,36 @@ void main() {
         ivec2 sensor_right_pos = ivec2(int(sensor_right.x), int(sensor_right.y));
 
         // Read trail map values at sensor positions
-        vec4 color = vec4(agents[gid].r, agents[gid].g, agents[gid].b, 0.0f);
-        //vec4 color = vec4(rnd, rnd, rnd, 1.0f);
+        vec3 color = vec3(agents[gid].r, agents[gid].g, agents[gid].b);
         vec4 sensor_front_color = imageLoad(TrailMap, sensor_front_pos);
         vec4 sensor_left_color = imageLoad(TrailMap, sensor_left_pos);
         vec4 sensor_right_color = imageLoad(TrailMap, sensor_right_pos);
 
-        vec3 color_hsv = rgb2hsv(color.rgb);
+        vec3 color_hsv = rgb2hsv(color);
         vec3 sensor_front_hsv = rgb2hsv(sensor_front_color.rgb);
         vec3 sensor_left_hsv = rgb2hsv(sensor_left_color.rgb);
         vec3 sensor_right_hsv = rgb2hsv(sensor_right_color.rgb);
 
-        float sensor_front_v = abs(color_hsv.x - sensor_front_hsv.x);
-        float sensor_left_v = abs(color_hsv.x - sensor_left_hsv.x);
-        float sensor_right_v = abs(color_hsv.x - sensor_right_hsv.x);
+        float sensor_front_v = pow(abs(color_hsv.x - sensor_front_hsv.x), 2);
+        float sensor_left_v = pow(abs(color_hsv.x - sensor_left_hsv.x), 2);
+        float sensor_right_v = pow(abs(color_hsv.x - sensor_right_hsv.x), 2);
 
         float turningAngle = params.turningAngle;
         if ((sensor_left_v < sensor_front_v) && (sensor_right_v < sensor_front_v)) {
-            if (rnd < 0.5) {
-                angle += turningAngle;
-            } else {
-                angle -= turningAngle;
-            }  
-        } else if (sensor_right_v > sensor_left_v) {
-            angle += turningAngle * rnd;
-        } else if (sensor_left_v > sensor_right_v) {
-            angle -= turningAngle * rnd;
+            angle += (rnd - 0.5f) * 2.0f * turningAngle;
+        } else if (sensor_left_v < sensor_right_v) {
+            angle += turningAngle;
+        } else if (sensor_right_v < sensor_left_v) {
+            angle -= turningAngle;
         } else {
-            //angle += rnd;
+            angle += (rnd - 0.5f) * 4.0f * M_PI * Delta;
         }
 
-        float stepSize = params.stepSize;// + params.stepSize * t;
+        float stepSize = params.stepSize * Delta;
         vec2 new_position = vec2(
             mod(agents[gid].x + stepSize * cos(angle), width),
             mod(agents[gid].y + stepSize * sin(angle), height)
         );
-
-        /*
-        if (new_position.x <= 0 || new_position.x >= width || new_position.y <= 0 || new_position.y >= height) {
-            //new_position.x = min(width - 1.0f, max(0.0f, new_position.x));
-            //new_position.y = min(height - 1.0f, max(0.0f, new_position.y));
-            new_position.x = mod(new_position.x, width);
-            //new_position.x 
-            //new_position.x = 1.0f + width * rnd;
-            //if (rnd < 0.5f) {
-            //    new_position.x += stepSize;
-            //} else {
-            //    new_position.x -= stepSize;
-            //}
-            t = new_position.x / width;
-            // height * 0.25f + ...  * 0.5f
-            new_position.y = height * (0.5f * (1.0f + sin(2.0f * M_PI * t * 1.0f + Time * 0.1f)));
-            if (rnd < 0.5f) {
-                new_position.y = mod(new_position.y, height);
-            } else {
-                new_position.y = mod(new_position.y, height);
-            }            
-            //angle -= 3.14f;
-            //angle = -angle;
-            angle = rnd * 2.0f * M_PI;         
-        }
-        */
 
         ivec2 new_pixel = ivec2(int(new_position.x), int(new_position.y));
 
@@ -188,9 +163,9 @@ void main() {
         vec4 TrailMapNewV = imageLoad(TrailMap, new_pixel);
 
         float depositAmount = params.depositAmount;
-        vec4 full_color = vec4(color.rgb, 1.0f);
+        vec4 full_color = vec4(color, 1.0f);
         vec4 new_color = full_color * depositAmount;
-        vec4 new_value = TrailMapV + new_color;
+        vec4 new_value = min(TrailMapV + new_color * Delta, 1.0f);
 
         imageStore(AgentMapOut, new_pixel, AgentMapNewV + 1.0f);
         imageStore(TrailMapOut, new_pixel, new_value);
@@ -199,26 +174,56 @@ void main() {
         agents[gid].y = new_position.y;
         agents[gid].angle = angle;
     } else {
+        /*
         if (gid >= width * height) {
             return;
         }
 
-        int y = int(gid / params.frameBufferWidth);
-        int x = int(mod(float(gid), width));
-        int k = int(5 / 2);
-        float n = pow(5, 2);
+        int x = int(mod(gid, width));
+        int y = int(gid / width);
+        ivec2 coord = ivec2(x, y);
+
         vec4 sum = vec4(0.0f);
-        for (int i = -k; i < k + 1; i++) {
-            for (int j = -k; j < k + 1; j++) {
-                ivec2 pos_k = ivec2(int(mod(float(x + i), width)), int(mod(float(y + j), height)));
-                sum += imageLoad(TrailMap, pos_k);
+        vec4 trailColor = imageLoad(TrailMap, coord);
+        for (int offsetX = -1; offsetX <= 1; offsetX++) {
+            for (int offsetY = -1; offsetY <= 1; offsetY++) {
+                uint sampleX = min(width - 1, max(0, x + offsetX));
+                uint sampleY = min(height - 1, max(0, y + offsetY));
+                sum += imageLoad(TrailMap, ivec2(sampleX, sampleY));
             }
         }
 
-        ivec2 pixel = ivec2(x, y);
-        float decayAmount = 1.0f - params.decayAmount;
-        vec4 v = sum / n;
-        imageStore(TrailMapOut, pixel,  v * decayAmount);
-        imageStore(AgentMapOut, pixel, vec4(0.0f));
+        vec4 blurredColor = sum / 9.0f;
+        float diffuseAmount = params.diffuseAmount;
+        blurredColor = trailColor * (1.0f - diffuseAmount) + blurredColor * (diffuseAmount);
+        imageStore(TrailMapOut, coord, max(blurredColor - (params.decayAmount) * Delta, 0.0f));
+        */
+        
+        if (gid >= width * height) {
+            return;
+        }
+
+        int x = int(mod(gid, width));
+        int y = int(gid / width);
+        ivec2 coord = ivec2(x, y);
+
+        vec4 sum = vec4(0.0f);
+        vec4 trailColor = imageLoad(TrailMap, coord);
+        for (int offsetX = -1; offsetX <= 1; offsetX++) {
+            for (int offsetY = -1; offsetY <= 1; offsetY++) {
+                uint sampleX = min(width - 1, max(0, x + offsetX));
+                uint sampleY = min(height - 1, max(0, y + offsetY));
+                sum += imageLoad(TrailMap, ivec2(sampleX, sampleY));
+            }
+        }
+
+        float decayAmount = 1.0f - (params.decayAmount * Delta);
+        vec4 blurredColor = sum / 9.0f;
+        float diffuseAmount = params.diffuseAmount;
+        blurredColor = trailColor * (1.0f - diffuseAmount) + blurredColor * (diffuseAmount);
+        //imageStore(TrailMapOut, coord, max(blurredColor - (params.decayAmount) * Delta, 0.0f));
+        imageStore(TrailMapOut, coord,  blurredColor * decayAmount);
+        imageStore(AgentMapOut, coord, vec4(0.0f));
+        
     }
 }
