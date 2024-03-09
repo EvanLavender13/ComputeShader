@@ -27,7 +27,7 @@ struct Agent {
     float r, g, b;
 };
 
-layout (std430) restrict buffer Agents {
+layout (std430) restrict buffer AgentData {
     Agent agents[];
 };
 
