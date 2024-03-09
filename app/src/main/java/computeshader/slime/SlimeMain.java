@@ -21,14 +21,14 @@ public class SlimeMain {
 
     private ShaderApp app;
 
-    private int numAgents;
-    private float[] sensingDistanceParameter;
-    private float[] sensingAngleParameter;
-    private float[] turningAngleParameter;
-    private float[] depositAmountParameter;
-    private float[] diffuseAmountParameter;
-    private float[] decayAmountParameter;
-    private float[] stepSizeParameter;
+    private int numAgents = (int) pow(2, 20);
+    private float[] sensingDistanceParameter = new float[] { 50.0f };
+    private float[] sensingAngleParameter = new float[] { (float) toRadians(45.0f) };
+    private float[] turningAngleParameter = new float[] { (float) toRadians(45.0f) };
+    private float[] depositAmountParameter = new float[] { 1.0f };
+    private float[] diffuseAmountParameter = new float[] { 0.5f };
+    private float[] decayAmountParameter = new float[] { 0.5f };
+    private float[] stepSizeParameter = new float[] { 100.0f };
 
     private String title = "Slime";
     private int windowWidth = 1600;
@@ -43,31 +43,6 @@ public class SlimeMain {
     public SlimeMain() {
         app = new ShaderApp(new ShaderAppConfiguration(title, windowWidth, windowHeight, textureWidth, textureHeight));
 
-        app.configuration(() -> {
-            numAgents = (int) pow(2, 20);
-
-            sensingDistanceParameter = new float[1];
-            sensingDistanceParameter[0] = 50.0f;
-
-            sensingAngleParameter = new float[1];
-            sensingAngleParameter[0] = (float) toRadians(45.0f);
-
-            turningAngleParameter = new float[1];
-            turningAngleParameter[0] = (float) toRadians(45.0f);
-
-            depositAmountParameter = new float[1];
-            depositAmountParameter[0] = 1.0f;
-
-            diffuseAmountParameter = new float[1];
-            diffuseAmountParameter[0] = 0.5f;
-
-            decayAmountParameter = new float[1];
-            decayAmountParameter[0] = 0.5f;
-
-            stepSizeParameter = new float[1];
-            stepSizeParameter[0] = 100.0f;
-        });
-
         app.preRun(() -> {
             app.createTexture("AgentMap");
             app.createTexture("AgentMapOut");
@@ -81,7 +56,7 @@ public class SlimeMain {
             try {
                 app.createComputeShader("AgentShader", "/compute.glsl");
 
-                float[] shaderParameters = new float[] {
+                app.createStorageBuffer("ShaderParameters", new float[] {
                         (float) textureWidth,
                         (float) textureHeight,
                         sensingDistanceParameter[0],
@@ -91,12 +66,10 @@ public class SlimeMain {
                         diffuseAmountParameter[0],
                         decayAmountParameter[0],
                         stepSizeParameter[0]
-                };
-                app.createStorageBuffer("ShaderParameters", shaderParameters);
+                });
 
                 logger.info("Creating {} agents", numAgents);
-                float[] computeShaderAgents = AgentUtil.nAgentsRainbow(numAgents, textureWidth, textureHeight);
-                app.createStorageBuffer("AgentData", computeShaderAgents);
+                app.createStorageBuffer("AgentData", AgentUtil.nAgentsRainbow(numAgents, textureWidth, textureHeight));
             } catch (IOException | URISyntaxException e) {
                 logger.error("Exception caught when creating shaders!", e);
             }
