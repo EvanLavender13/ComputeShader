@@ -9,7 +9,7 @@ layout (binding = 1, rgba32f) uniform image2D AgentMapOut;
 layout (binding = 2, rgba32f) uniform image2D TrailMap;
 layout (binding = 3, rgba32f) uniform image2D TrailMapOut;
 
-layout (binding = 4, std430) restrict buffer ShaderParameters {
+layout (std430) restrict buffer ShaderParameters {
     float frameBufferWidth;
     float frameBufferHeight;
     float sensingDistance;
@@ -95,7 +95,7 @@ void main() {
     uint width = uint(params.frameBufferWidth);
     uint height = uint(params.frameBufferHeight);
 
-    float t = 0.5f * (1 + sin(2 * M_PI * 1.0f + Time));
+    //float t = 0.5f * (1 + sin(2 * M_PI * 1.0f + Time));
 
     if (Stage == 0) {
         float angle = agents[gid].angle;
@@ -123,7 +123,6 @@ void main() {
         ivec2 sensor_left_pos = ivec2(int(sensor_left.x), int(sensor_left.y));
         ivec2 sensor_right_pos = ivec2(int(sensor_right.x), int(sensor_right.y));
 
-        // Read trail map values at sensor positions
         vec3 color = vec3(agents[gid].r, agents[gid].g, agents[gid].b);
         vec4 sensor_front_color = imageLoad(TrailMap, sensor_front_pos);
         vec4 sensor_left_color = imageLoad(TrailMap, sensor_left_pos);
@@ -146,7 +145,7 @@ void main() {
         } else if (sensor_right_v < sensor_left_v) {
             angle -= turningAngle;
         } else {
-            angle += (rnd - 0.5f) * 4.0f * M_PI * Delta;
+            //angle += sign(rnd - 0.5f) * 2.0f * M_PI * Delta;
         }
 
         float stepSize = params.stepSize * Delta;

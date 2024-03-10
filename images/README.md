@@ -14,3 +14,4 @@ After converting color to HSV for sensing
 ![12](12.png)
 ![13](13.png)
 ![14](14.png)
+![15](15.png)

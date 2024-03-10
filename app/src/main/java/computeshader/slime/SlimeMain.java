@@ -2,10 +2,7 @@ package computeshader.slime;
 
 import static java.lang.Math.pow;
 import static java.lang.Math.toRadians;
-import static org.lwjgl.glfw.GLFW.glfwGetTime;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -20,23 +17,23 @@ public class SlimeMain {
     private static final Logger logger = LogManager.getLogger();
 
     private ShaderApp app;
-
-    private int numAgents = (int) pow(2, 20);
-    private float[] sensingDistanceParameter = new float[] { 50.0f };
-    private float[] sensingAngleParameter = new float[] { (float) toRadians(45.0f) };
-    private float[] turningAngleParameter = new float[] { (float) toRadians(45.0f) };
-    private float[] depositAmountParameter = new float[] { 1.0f };
-    private float[] diffuseAmountParameter = new float[] { 0.5f };
-    private float[] decayAmountParameter = new float[] { 0.5f };
-    private float[] stepSizeParameter = new float[] { 100.0f };
-
     private String title = "Slime";
     private int windowWidth = 1600;
     private int windowHeight = 900;
-    private int textureWidth = 1920;
-    private int textureHeight = 1080;
+    private int textureWidth = 1920 * 2;
+    private int textureHeight = 1080 * 2;
 
-    private double currentTime = glfwGetTime();
+    private int numAgents = (int) pow(2, 22);
+    private float[] agentData = AgentUtil.nAgentsHueGradient(numAgents, textureWidth, textureHeight);
+    private float[] sensingDistanceParameter = new float[] { 25.0f };
+    private float[] sensingAngleParameter = new float[] { (float) toRadians(35.0f) };
+    private float[] turningAngleParameter = new float[] { (float) toRadians(35.0f) };
+    private float[] depositAmountParameter = new float[] { 1.0f };
+    private float[] diffuseAmountParameter = new float[] { 1.0f };
+    private float[] decayAmountParameter = new float[] { 0.5f };
+    private float[] stepSizeParameter = new float[] { 100.0f };
+
+    private double currentTime = 0.0f;
     private double previousFrameTime = 0.0;
     private double deltaTime = 0.0;
 
@@ -52,27 +49,24 @@ public class SlimeMain {
             app.addUniform("Stage");
             app.addUniform("Time");
             app.addUniform("Delta");
+            app.addUniform("AudioFrame");
 
-            try {
-                app.createComputeShader("AgentShader", "/compute.glsl");
+            app.createComputeShader("AgentShader", "/slime.glsl");
 
-                app.createStorageBuffer("ShaderParameters", new float[] {
-                        (float) textureWidth,
-                        (float) textureHeight,
-                        sensingDistanceParameter[0],
-                        sensingAngleParameter[0],
-                        turningAngleParameter[0],
-                        depositAmountParameter[0],
-                        diffuseAmountParameter[0],
-                        decayAmountParameter[0],
-                        stepSizeParameter[0]
-                });
+            app.createStorageBuffer("ShaderParameters", new float[] {
+                    (float) textureWidth,
+                    (float) textureHeight,
+                    sensingDistanceParameter[0],
+                    sensingAngleParameter[0],
+                    turningAngleParameter[0],
+                    depositAmountParameter[0],
+                    diffuseAmountParameter[0],
+                    decayAmountParameter[0],
+                    stepSizeParameter[0]
+            });
 
-                logger.info("Creating {} agents", numAgents);
-                app.createStorageBuffer("AgentData", AgentUtil.nAgentsRainbow(numAgents, textureWidth, textureHeight));
-            } catch (IOException | URISyntaxException e) {
-                logger.error("Exception caught when creating shaders!", e);
-            }
+            logger.info("Creating {} agents", numAgents);
+            app.createStorageBuffer("AgentData", agentData);
         });
 
         app.gui(() -> {
@@ -115,31 +109,24 @@ public class SlimeMain {
             }
         });
 
-        app.processSteps(List.of(
-                () -> {
-                    app.setUIntUniform("Stage", 0);
-                    app.setFloatUniform("Time", (float) currentTime);
-                    app.setFloatUniform("Delta", (float) deltaTime);
+        app.processSteps(List.of(() -> {
+            app.setUIntUniform("Stage", 0);
+            app.setFloatUniform("Time", (float) currentTime);
+            app.setFloatUniform("Delta", (float) deltaTime);
 
-                    int[] workGroupSize = app.getWorkGroupSize("AgentShader");
-                    app.runComputeShader(numAgents / workGroupSize[0]);
-                },
+            int[] workGroupSize = app.getWorkGroupSize("AgentShader");
+            app.runComputeShader(numAgents / workGroupSize[0]);
+        }, () -> {
+            app.copyTexture("TrailMapOut", "TrailMap");
+            app.copyTexture("AgentMapOut", "AgentMap");
+        }, () -> {
+            app.setUIntUniform("Stage", 1);
 
-                () -> {
-                    app.copyTexture("TrailMapOut", "TrailMap");
-                    app.copyTexture("AgentMapOut", "AgentMap");
-                },
-
-                () -> {
-                    app.setUIntUniform("Stage", 1);
-
-                    int[] workGroupSize = app.getWorkGroupSize("AgentShader");
-                    app.runComputeShader(textureWidth * textureHeight / workGroupSize[0]);
-                },
-
-                () -> {
-                    app.copyTexture("TrailMapOut", "TrailMap");
-                }));
+            int[] workGroupSize = app.getWorkGroupSize("AgentShader");
+            app.runComputeShader(textureWidth * textureHeight / workGroupSize[0]);
+        }, () -> {
+            app.copyTexture("TrailMapOut", "TrailMap");
+        }));
 
         app.display("TrailMap");
     }

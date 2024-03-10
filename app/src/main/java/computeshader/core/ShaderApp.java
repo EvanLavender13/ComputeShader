@@ -108,7 +108,6 @@ public class ShaderApp extends Application {
     private int vertexArrayObjectId;
     private Map<String, Integer> uniformLocationMap;
     private Map<String, Integer> storageBufferMap;
-    // private Map<String, Integer> storageBufferLocationMap;
     private Map<String, int[]> workGroupSizeMap;
 
     private int computeProgramShaderId;
@@ -129,7 +128,6 @@ public class ShaderApp extends Application {
         textureBindingMap = new HashMap<>();
         uniformLocationMap = new HashMap<>();
         storageBufferMap = new HashMap<>();
-        // storageBufferLocationMap = new HashMap<>();
         workGroupSizeMap = new HashMap<>();
     }
 
@@ -149,7 +147,7 @@ public class ShaderApp extends Application {
 
         this.colorBg.set(0.0f, 0.0f, 0.0f, 1.0f);
 
-        logger.info("Running configuration step");
+        logger.info("Running 'configuration' step");
         configuration.run();
     }
 
@@ -166,7 +164,7 @@ public class ShaderApp extends Application {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glAlphaFunc(GL_GREATER, 0.1f);
 
-        logger.info("Running pre-run step");
+        logger.info("Running 'preRun' step");
         preRun.run();
 
         samplerId = glGenSamplers();
@@ -263,7 +261,7 @@ public class ShaderApp extends Application {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bufferLocation, bufferId);
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-            logger.debug("Created {} storage buffer (id {}, bytes {})", name, bufferId, data.length * Float.BYTES);
+            logger.debug("Created {} storage buffer (id {}, {} bytes)", name, bufferId, data.length * Float.BYTES);
             storageBufferMap.put(name, bufferId);
         }
         glUseProgram(0);
@@ -275,18 +273,23 @@ public class ShaderApp extends Application {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
 
-    public void createComputeShader(String name, String filePath) throws IOException, URISyntaxException {
+    public void createComputeShader(String name, String filePath) {
         computeProgramShaderId = glCreateProgram();
         logger.debug("Created {} program (id {})", name, computeProgramShaderId);
 
         int shaderId = glCreateShader(GL_COMPUTE_SHADER);
 
-        String computeShaderSource = Files.readString(Path.of(getClass().getResource("/compute.glsl").toURI()));
-        glShaderSource(shaderId, computeShaderSource);
-        glCompileShader(shaderId);
+        try {
+            String computeShaderSource = Files.readString(Path.of(getClass().getResource(filePath).toURI()));
+            glShaderSource(shaderId, computeShaderSource);
+            glCompileShader(shaderId);
+        } catch (IOException | URISyntaxException e) {
+            logger.error("Exception caught when creating shaders!", e);
+        }
 
         if (glGetShaderi(shaderId, GL_COMPILE_STATUS) == 0) {
-            throw new IOException("Error compiling Shader code: " + glGetShaderInfoLog(shaderId, 1024));
+            logger.error("Error compiling Shader code: {}", glGetShaderInfoLog(shaderId, 1024));
+            return;
         }
 
         glAttachShader(computeProgramShaderId, shaderId);
@@ -338,6 +341,10 @@ public class ShaderApp extends Application {
 
     public void runComputeShader(int x) {
         runComputeShader(x, 1, 1);
+    }
+
+    public void runComputeShader(int x, int y) {
+        runComputeShader(x, y, 1);
     }
 
     private void createDisplayShader() throws IOException, URISyntaxException {

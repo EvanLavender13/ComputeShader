@@ -23,7 +23,7 @@ public class AgentUtil {
         float brightness = 1.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 16.0f * (float) sqrt(random());
+            float radius = min(width, height) / 256.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -41,7 +41,7 @@ public class AgentUtil {
             // color
             agents[i * AGENT_SIZE_F + 3] = color.getRed() / 255.0f;
             agents[i * AGENT_SIZE_F + 4] = color.getGreen() / 255.0f;
-            agents[i * AGENT_SIZE_F + 5] = color.getBlue() / 255.0f;            
+            agents[i * AGENT_SIZE_F + 5] = color.getBlue() / 255.0f;
         }
 
         return agents;
@@ -57,7 +57,7 @@ public class AgentUtil {
         float brightness = 1.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 16.0f * (float) sqrt(random());
+            float radius = min(width, height) / 256.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -75,7 +75,7 @@ public class AgentUtil {
             // color
             agents[i * AGENT_SIZE_F + 3] = color.getRed() / 255.0f;
             agents[i * AGENT_SIZE_F + 4] = color.getGreen() / 255.0f;
-            agents[i * AGENT_SIZE_F + 5] = color.getBlue() / 255.0f;            
+            agents[i * AGENT_SIZE_F + 5] = color.getBlue() / 255.0f;
         }
 
         return agents;
@@ -85,13 +85,13 @@ public class AgentUtil {
         float[] agents = new float[n * AGENT_SIZE_F];
 
         Color[] colors = new Color[] {
-            Color.RED,
-            Color.ORANGE,
-            Color.YELLOW,
-            Color.GREEN,
-            Color.CYAN,
-            Color.BLUE,
-            Color.MAGENTA
+                Color.RED,
+                Color.ORANGE,
+                Color.YELLOW,
+                Color.GREEN,
+                Color.CYAN,
+                Color.BLUE,
+                Color.MAGENTA
         };
 
         Random random = new Random();
@@ -100,7 +100,7 @@ public class AgentUtil {
         float centerY = height / 2.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 16.0f * (float) sqrt(random());
+            float radius = min(width, height) / 256.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -116,7 +116,7 @@ public class AgentUtil {
             agents[i * AGENT_SIZE_F + 3] = color.getRed() / 255.0f;
             agents[i * AGENT_SIZE_F + 4] = color.getGreen() / 255.0f;
             agents[i * AGENT_SIZE_F + 5] = color.getBlue() / 255.0f;
-        }        
+        }
 
         return agents;
     }
@@ -139,21 +139,43 @@ public class AgentUtil {
         return agents;
     }
 
-    public static float[] nAgentsGradient(int n, int width, int height) {
+    public static float[] nAgentsRandomColor(int n, int width, int height) {
         float[] agents = new float[n * AGENT_SIZE_F];
 
         Random random = new Random();
-        Color colorA = randomColor(random);
-        Color colorB = randomColor(random);
 
-        // Color colorA = Color.RED;
-        // Color colorB = Color.WHITE;
+        for (int i = 0; i < n; i++) {
+            // position + rotation
+            agents[i * AGENT_SIZE_F + 0] = (float) (random() * width);
+            agents[i * AGENT_SIZE_F + 1] = (float) (random() * height);
+            agents[i * AGENT_SIZE_F + 2] = (float) (random() * 360.0);
+
+            Color color = randomColor(random);
+
+            // color
+            agents[i * AGENT_SIZE_F + 3] = color.getRed() / 255.0f;
+            agents[i * AGENT_SIZE_F + 4] = color.getGreen() / 255.0f;
+            agents[i * AGENT_SIZE_F + 5] = color.getBlue() / 255.0f;
+        }
+
+        return agents;
+    }
+
+    public static float[] nAgentsGradient(int n, int width, int height) {
+        float[] agents = new float[n * AGENT_SIZE_F];
+
+        // Random random = new Random();
+        // Color colorA = randomColor(random);
+        // Color colorB = randomColor(random);
+
+        Color colorA = Color.RED;
+        Color colorB = Color.BLUE;
 
         float centerX = width / 2.0f;
         float centerY = height / 2.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 8.0f * (float) sqrt(random());
+            float radius = min(width, height) / 64.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -196,7 +218,7 @@ public class AgentUtil {
         float centerY = height / 2.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 8.0f * (float) sqrt(random());
+            float radius = min(width, height) / 64.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -230,11 +252,8 @@ public class AgentUtil {
     // https://stackoverflow.com/a/8739276
     private static Color randomColor(Random random) {
         final float hue = random.nextFloat();
-        final float saturation = 1.0f;// 1.0 for brilliant, 0.0 for dull
-        final float luminance = 0.5f; // 1.0 for brighter, 0.0 for black
-        // Saturation between 0.1 and 0.3
-        // final float saturation = (random.nextInt(2000) + 1000) / 10000f;
-        // final float luminance = 0.9f;
+        final float saturation = 1.0f;
+        final float luminance = random.nextFloat();
         return Color.getHSBColor(hue, saturation, luminance);
     }
 
