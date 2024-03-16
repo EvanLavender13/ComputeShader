@@ -7,14 +7,14 @@ import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_1;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_RAW_MOUSE_MOTION;
-import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
 import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
 import static org.lwjgl.glfw.GLFW.glfwGetCursorPos;
 import static org.lwjgl.glfw.GLFW.glfwGetMouseButton;
-import static org.lwjgl.glfw.GLFW.glfwSetCursorPos;
 import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.glfwSetScrollCallback;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -35,10 +35,10 @@ public class RayTracer {
     private long windowHandle;
 
     private String title = "RayTracer";
-    private int windowWidth = 900;
+    private int windowWidth = 1600;
     private int windowHeight = 900;
-    private int textureWidth = 900;
-    private int textureHeight = 900;
+    private int textureWidth = 1920;
+    private int textureHeight = 1080;
 
     private double currentTime = 0.0f;
     private double previousFrameTime = 0.0;
@@ -46,15 +46,24 @@ public class RayTracer {
 
     private Camera camera;
     private float mouseScroll = 0.0f;
-    private boolean mouseLocked = false;
     private double[] xMouse = new double[1];
     private double[] yMouse = new double[1];
+
+    private Scene scene;
 
     public RayTracer() {
         app = new ShaderApp(new ShaderAppConfiguration(title, windowWidth, windowHeight, textureWidth, textureHeight));
 
         app.configuration(() -> {
             camera = new Camera(textureWidth, textureHeight);
+
+            scene = new Scene();
+            int pink = scene.addMaterial(new Material(new Vector3f(1.0f, 0.0f, 1.0f), 0.0f, 0.0f));
+            int blue = scene.addMaterial(new Material(new Vector3f(0.2f, 0.3f, 1.0f), 0.1f, 0.0f));
+            scene.addSphere(new Sphere(new Vector3f(0.0f), 1.0f, pink));
+            scene.addSphere(new Sphere(new Vector3f(0.0f, -101.0f, 0.0f), 100.0f, blue));
+
+            logger.info("Created {}", scene);
         });
 
         app.preRun(() -> {
@@ -64,6 +73,7 @@ public class RayTracer {
             app.addUniform("CameraPosition");
             app.addUniform("InvProjection");
             app.addUniform("InvView");
+            app.addUniform("Time");
 
             app.createComputeShader("RayShader", "/raytrace.glsl");
 
@@ -71,6 +81,9 @@ public class RayTracer {
                     (float) textureWidth,
                     (float) textureHeight,
             });
+
+            app.createStorageBuffer("RayShader", "MaterialParameters", scene.getMaterialParameters());
+            app.createStorageBuffer("RayShader", "SphereParameters", scene.getSphereParameters());
 
             windowHandle = app.getHandle();
 
@@ -86,34 +99,38 @@ public class RayTracer {
 
             ImGui.text("Runtime: " + currentTime);
             ImGui.text("Delta  : " + deltaTime);
+
+            if (ImGui.sliderAngle("Vertical FoV", camera.getVerticalFov())) {
+                camera.calculateProjection();
+            }
         });
 
         app.processSteps(List.of(() -> {
-            if (!mouseLocked && glfwGetMouseButton(windowHandle, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS) {
-                mouseLocked = true;
-                glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                glfwSetInputMode(windowHandle, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+            if (ImGui.getIO().getWantCaptureMouse()) {
+                return;
             }
 
-            if (mouseLocked && glfwGetMouseButton(windowHandle, GLFW_MOUSE_BUTTON_1) == GLFW_RELEASE) {
-                mouseLocked = false;
-                glfwSetInputMode(windowHandle, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
-                glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            }
+            camera.zoom(mouseScroll);
+            mouseScroll = 0.0f;
 
             float lastMouseX = (float) xMouse[0];
             float lastMouseY = (float) yMouse[0];
             glfwGetCursorPos(windowHandle, xMouse, yMouse);
             float currMouseX = (float) xMouse[0];
             float currMouseY = (float) yMouse[0];
-            if (mouseLocked) {
-                float deltaX = currMouseX - lastMouseX;
-                float deltaY = currMouseY - lastMouseY;
-                camera.orbit(deltaX, deltaY);
+            float deltaX = currMouseX - lastMouseX;
+            float deltaY = currMouseY - lastMouseY;
+
+            if (!(glfwGetMouseButton(windowHandle, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS)) {
+                glfwSetInputMode(windowHandle, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+                glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                return;
             }
 
-            camera.zoom(mouseScroll);
-            mouseScroll = 0.0f;
+            glfwSetInputMode(windowHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            glfwSetInputMode(windowHandle, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+
+            camera.orbit(deltaX * 0.1f, deltaY * 0.1f);
         }, () -> {
             camera.update();
 
@@ -121,7 +138,10 @@ public class RayTracer {
                 app.setVector3fUniform("CameraPosition", camera.getPosition());
                 app.setMatrix4fUniform("InvProjection", camera.getInvProjection());
                 app.setMatrix4fUniform("InvView", camera.getInvView());
-                app.runComputeShader(textureWidth, textureHeight);
+                app.setFloatUniform("Time", (float) currentTime);
+
+                int[] workGroupSize = app.getWorkGroupSize("RayShader");
+                app.runComputeShader(textureWidth / workGroupSize[0], textureHeight / workGroupSize[1]);
             });
         }));
 
@@ -139,14 +159,14 @@ public class RayTracer {
         private Matrix4f invProjection = new Matrix4f();
         private Matrix4f invView = new Matrix4f();
 
-        private float verticalFov = Math.toRadians(45.0f);
+        private float[] verticalFov = new float[] { Math.toRadians(45.0f) };
         private float nearClip = 0.1f;
         private float farClip = 100.0f;
-        private Vector3f center = new Vector3f();
+        private Vector3f center = new Vector3f(0.0f, 0.0f, 0.0f);
         private Vector3f position = new Vector3f(0.0f, 0.0f, 0.0f);
         private Vector3f forward = new Vector3f(0.0f, 0.0f, -1.0f);
         private Vector3f up = new Vector3f(0.0f, 1.0f, 0.0f);
-        private float distance = 3.0f;
+        private float distance = 10.0f;
         private float latitude = 0.0f;
         private float longitude = 0.0f;
         private Vector3f euclidean = new Vector3f();
@@ -185,7 +205,7 @@ public class RayTracer {
 
         private void calculateProjection() {
             float aspectRatio = viewportWidth / viewportHeight;
-            projection.setPerspective(verticalFov, aspectRatio, nearClip, farClip);
+            projection.setPerspective(verticalFov[0], aspectRatio, nearClip, farClip);
             projection.invert(invProjection);
         }
 
@@ -226,11 +246,75 @@ public class RayTracer {
             return invView;
         }
 
+        private float[] getVerticalFov() {
+            return verticalFov;
+        }
+
         @Override
         public String toString() {
             return "Camera [verticalFov=" + verticalFov + ", nearClip=" + nearClip + ", farClip=" + farClip
                     + ", forward=" + forward + ", up=" + up + ", viewportWidth=" + viewportWidth + ", viewportHeight="
                     + viewportHeight + "]";
+        }
+    }
+
+    private record Material(Vector3f albedo, float roughness, float metallic) {
+    }
+
+    private record Sphere(Vector3f position, float radius, int materialIndex) {
+    }
+
+    private class Scene {
+        private List<Material> materials;
+        private List<Sphere> spheres;
+
+        public Scene() {
+            materials = new ArrayList<>();
+            spheres = new ArrayList<>();
+        }
+
+        public int addMaterial(Material material) {
+            materials.add(material);
+            return materials.indexOf(material);
+        }
+
+        public void addSphere(Sphere sphere) {
+            spheres.add(sphere);
+        }
+
+        public float[] getMaterialParameters() {
+            float[] params = new float[5 * materials.size()];
+            for (int i = 0; i < materials.size(); i++) {
+                Material material = materials.get(i);
+                Vector3f albedo = material.albedo;
+                params[5 * i + 0] = albedo.x;
+                params[5 * i + 1] = albedo.y;
+                params[5 * i + 2] = albedo.z;
+                params[5 * i + 3] = material.roughness;
+                params[5 * i + 4] = material.metallic;
+            }
+
+            return params;
+        }
+
+        public float[] getSphereParameters() {
+            float[] params = new float[5 * spheres.size()];
+            for (int i = 0; i < spheres.size(); i++) {
+                Sphere sphere = spheres.get(i);
+                Vector3f position = sphere.position;
+                params[5 * i + 0] = position.x;
+                params[5 * i + 1] = position.y;
+                params[5 * i + 2] = position.z;
+                params[5 * i + 3] = sphere.radius;
+                params[5 * i + 4] = sphere.materialIndex;          
+            }
+
+            return params;
+        }
+
+        @Override
+        public String toString() {
+            return "Scene [materials=" + materials + ", spheres=" + spheres + "]";
         }
     }
 }
