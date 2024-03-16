@@ -24,7 +24,7 @@ public class SlimeMain {
     private int textureHeight = 1080 * 2;
 
     private int numAgents = (int) pow(2, 22);
-    private float[] agentData = AgentUtil.nAgentsHueGradient(numAgents, textureWidth, textureHeight);
+    private float[] agentData = AgentUtil.nAgentsGradient(numAgents, textureWidth, textureHeight);
     private float[] sensingDistanceParameter = new float[] { 25.0f };
     private float[] sensingAngleParameter = new float[] { (float) toRadians(35.0f) };
     private float[] turningAngleParameter = new float[] { (float) toRadians(35.0f) };
@@ -32,6 +32,7 @@ public class SlimeMain {
     private float[] diffuseAmountParameter = new float[] { 1.0f };
     private float[] decayAmountParameter = new float[] { 0.5f };
     private float[] stepSizeParameter = new float[] { 100.0f };
+    private float[] randomAmountParameter = new float[] { 0.0f };
 
     private double currentTime = 0.0f;
     private double previousFrameTime = 0.0;
@@ -49,11 +50,10 @@ public class SlimeMain {
             app.addUniform("Stage");
             app.addUniform("Time");
             app.addUniform("Delta");
-            app.addUniform("AudioFrame");
 
             app.createComputeShader("AgentShader", "/slime.glsl");
 
-            app.createStorageBuffer("ShaderParameters", new float[] {
+            app.createStorageBuffer("AgentShader", "ShaderParameters", new float[] {
                     (float) textureWidth,
                     (float) textureHeight,
                     sensingDistanceParameter[0],
@@ -62,11 +62,12 @@ public class SlimeMain {
                     depositAmountParameter[0],
                     diffuseAmountParameter[0],
                     decayAmountParameter[0],
-                    stepSizeParameter[0]
+                    stepSizeParameter[0],
+                    randomAmountParameter[0]
             });
 
             logger.info("Creating {} agents", numAgents);
-            app.createStorageBuffer("AgentData", agentData);
+            app.createStorageBuffer("AgentShader", "AgentData", agentData);
         });
 
         app.gui(() -> {
@@ -78,8 +79,7 @@ public class SlimeMain {
             ImGui.text("Delta  : " + deltaTime);
             ImGui.text("Particle Count: " + numAgents);
 
-            if (ImGui.sliderFloat("Sensing Distance", sensingDistanceParameter, 1.0f, 1000.0f)) {
-                sensingDistanceParameter[0] = (float) Math.floor(sensingDistanceParameter[0]);
+            if (ImGui.dragFloat("Sensing Distance", sensingDistanceParameter, 1.0f, 1.0f, 1000.0f)) {
                 app.updateStorageBuffer("ShaderParameters", 2, sensingDistanceParameter);
             }
 
@@ -103,27 +103,34 @@ public class SlimeMain {
                 app.updateStorageBuffer("ShaderParameters", 7, decayAmountParameter);
             }
 
-            if (ImGui.sliderFloat("Step Size", stepSizeParameter, 0.0f, 10000.0f)) {
-                stepSizeParameter[0] = (float) Math.floor(stepSizeParameter[0]);
+            if (ImGui.dragFloat("Step Size", stepSizeParameter, 10.0f, 0.0f, 10000.0f)) {
                 app.updateStorageBuffer("ShaderParameters", 8, stepSizeParameter);
+            }
+
+            if (ImGui.sliderFloat("Random", randomAmountParameter, 0.0f, 1.0f)) {
+                app.updateStorageBuffer("ShaderParameters", 9, randomAmountParameter);
             }
         });
 
         app.processSteps(List.of(() -> {
-            app.setUIntUniform("Stage", 0);
-            app.setFloatUniform("Time", (float) currentTime);
-            app.setFloatUniform("Delta", (float) deltaTime);
+            app.usingProgram("AgentShader", () -> {
+                app.setUIntUniform("Stage", 0);
+                app.setFloatUniform("Time", (float) currentTime);
+                app.setFloatUniform("Delta", (float) deltaTime);
 
-            int[] workGroupSize = app.getWorkGroupSize("AgentShader");
-            app.runComputeShader(numAgents / workGroupSize[0]);
+                int[] workGroupSize = app.getWorkGroupSize("AgentShader");
+                app.runComputeShader(numAgents / workGroupSize[0]);
+            });
         }, () -> {
             app.copyTexture("TrailMapOut", "TrailMap");
             app.copyTexture("AgentMapOut", "AgentMap");
         }, () -> {
-            app.setUIntUniform("Stage", 1);
+            app.usingProgram("AgentShader", () -> {
+                app.setUIntUniform("Stage", 1);
 
-            int[] workGroupSize = app.getWorkGroupSize("AgentShader");
-            app.runComputeShader(textureWidth * textureHeight / workGroupSize[0]);
+                int[] workGroupSize = app.getWorkGroupSize("AgentShader");
+                app.runComputeShader(textureWidth * textureHeight / workGroupSize[0]);
+            });
         }, () -> {
             app.copyTexture("TrailMapOut", "TrailMap");
         }));

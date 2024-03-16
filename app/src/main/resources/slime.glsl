@@ -19,6 +19,7 @@ layout (std430) restrict buffer ShaderParameters {
     float diffuseAmount;
     float decayAmount;
     float stepSize;
+    float randomAmount;
 } params;
 
 struct Agent {
@@ -138,14 +139,15 @@ void main() {
         float sensor_right_v = pow(abs(color_hsv.x - sensor_right_hsv.x), 2);
 
         float turningAngle = params.turningAngle;
+        float randomAmount = params.randomAmount;
         if ((sensor_left_v < sensor_front_v) && (sensor_right_v < sensor_front_v)) {
-            angle += (rnd - 0.5f) * 2.0f * turningAngle;
+            angle += sign(rnd - 0.5f) * (turningAngle - turningAngle * (1.0f - randomAmount));
         } else if (sensor_left_v < sensor_right_v) {
-            angle += turningAngle;
+            angle += (turningAngle - turningAngle * (1.0f - rnd) * randomAmount);
         } else if (sensor_right_v < sensor_left_v) {
-            angle -= turningAngle;
+            angle -= (turningAngle - turningAngle * (1.0f - rnd) * randomAmount);
         } else {
-            //angle += sign(rnd - 0.5f) * 2.0f * M_PI * Delta;
+            angle += (rnd - 0.5f) * 4.0f * M_PI * randomAmount;
         }
 
         float stepSize = params.stepSize * Delta;

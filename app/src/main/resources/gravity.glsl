@@ -46,7 +46,7 @@ void main() {
             vec2 position2 = vec2(b.x, b.y);
             vec2 difference = position1 - position2;
             float distanceSquared = max(0.0f, pow(length(difference), 2));
-            float force = 1.0f * (mass1 * mass2) / distanceSquared;
+            float force = 0.1f * (mass1 * mass2) / distanceSquared;
 
             totalForce += normalize(-difference) * force;
         }
@@ -56,8 +56,8 @@ void main() {
     } else if (Stage == 1) { 
         int i = gid.x;
 
-        objects[i].x += objects[i].dx * 0.01f;
-        objects[i].y += objects[i].dy * 0.01f;        
+        objects[i].x += objects[i].dx * 0.1f;
+        objects[i].y += objects[i].dy * 0.1f;        
     } else if (Stage == 2) {
         float mass1 = 1.0f;
 

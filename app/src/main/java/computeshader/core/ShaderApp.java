@@ -50,6 +50,8 @@ import static org.lwjgl.opengl.GL20.glGetUniformLocation;
 import static org.lwjgl.opengl.GL20.glGetUniformiv;
 import static org.lwjgl.opengl.GL20.glLinkProgram;
 import static org.lwjgl.opengl.GL20.glShaderSource;
+import static org.lwjgl.opengl.GL20.glUniform3fv;
+import static org.lwjgl.opengl.GL20.glUniformMatrix4fv;
 import static org.lwjgl.opengl.GL20.glUseProgram;
 import static org.lwjgl.opengl.GL20C.glUniform1f;
 import static org.lwjgl.opengl.GL30.GL_RGBA32F;
@@ -61,7 +63,7 @@ import static org.lwjgl.opengl.GL30C.glUniform1ui;
 import static org.lwjgl.opengl.GL33.glBindSampler;
 import static org.lwjgl.opengl.GL33.glGenSamplers;
 import static org.lwjgl.opengl.GL33.glSamplerParameteri;
-import static org.lwjgl.opengl.GL42.GL_ALL_BARRIER_BITS;
+import static org.lwjgl.opengl.GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
 import static org.lwjgl.opengl.GL42.glTexStorage2D;
 import static org.lwjgl.opengl.GL42C.glBindImageTexture;
 import static org.lwjgl.opengl.GL42C.glMemoryBarrier;
@@ -76,6 +78,7 @@ import static org.lwjgl.opengl.GL43.glShaderStorageBlockBinding;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -86,7 +89,10 @@ import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryStack;
 
 import imgui.app.Application;
 import imgui.app.Configuration;
@@ -106,11 +112,11 @@ public class ShaderApp extends Application {
     private String displayTexture;
     private int samplerId;
     private int vertexArrayObjectId;
+    private Map<String, Integer> computeShaderMap;
     private Map<String, Integer> uniformLocationMap;
     private Map<String, Integer> storageBufferMap;
     private Map<String, int[]> workGroupSizeMap;
 
-    private int computeProgramShaderId;
     private int displayShaderProgramId;
 
     public ShaderApp(ShaderAppConfiguration shaderAppConfig) {
@@ -126,6 +132,7 @@ public class ShaderApp extends Application {
 
         textureMap = new HashMap<>();
         textureBindingMap = new HashMap<>();
+        computeShaderMap = new HashMap<>();
         uniformLocationMap = new HashMap<>();
         storageBufferMap = new HashMap<>();
         workGroupSizeMap = new HashMap<>();
@@ -182,28 +189,22 @@ public class ShaderApp extends Application {
 
     @Override
     public void process() {
+        if (processSteps.isEmpty()) {
+            return;
+        }
+
         gui.run();
 
-        glUseProgram(computeProgramShaderId);
-        {
-            textureBindingMap.entrySet().forEach(entry -> {
-                glBindImageTexture(entry.getValue(), textureMap.get(entry.getKey()), 0, false, 0, GL_READ_WRITE,
-                        GL_RGBA32F);
-            });
+        textureBindingMap.entrySet().forEach(entry -> {
+            glBindImageTexture(entry.getValue(), textureMap.get(entry.getKey()), 0, false, 0, GL_READ_WRITE,
+                    GL_RGBA32F);
+        });
 
-            glMemoryBarrier(GL_ALL_BARRIER_BITS);
-            {
-                processSteps.forEach(step -> {
-                    step.run();
-                    glMemoryBarrier(GL_ALL_BARRIER_BITS);
-                });
-            }
-
-            textureBindingMap.entrySet().forEach(entry -> {
-                glBindImageTexture(entry.getValue(), 0, 0, false, 0, 0, 0);
-            });
-        }
-        glUseProgram(0);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        processSteps.forEach(step -> {
+            step.run();
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        });
 
         glUseProgram(displayShaderProgramId);
         {
@@ -216,6 +217,10 @@ public class ShaderApp extends Application {
             glBindVertexArray(0);
         }
         glUseProgram(0);
+
+        textureBindingMap.entrySet().forEach(entry -> {
+            glBindImageTexture(entry.getValue(), 0, 0, false, 0, 0, 0);
+        });
     }
 
     public void createTexture(String name) {
@@ -248,7 +253,23 @@ public class ShaderApp extends Application {
         glUniform1f(uniformLocationMap.get(name), value);
     }
 
-    public void createStorageBuffer(String name, float[] data) {
+    public void setVector3fUniform(String name, Vector3f value) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer buffer = value.get(stack.mallocFloat(3));
+            glUniform3fv(uniformLocationMap.get(name), buffer);
+        }        
+    }
+
+    public void setMatrix4fUniform(String name, Matrix4f value) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer buffer = value.get(stack.mallocFloat(16));
+            glUniformMatrix4fv(uniformLocationMap.get(name), false, buffer);
+        }
+    }
+
+    public void createStorageBuffer(String programName, String name, float[] data) {
+        int computeProgramShaderId = computeShaderMap.get(programName);
+
         glUseProgram(computeProgramShaderId);
         {
             int bufferId = glGenBuffers();
@@ -274,8 +295,9 @@ public class ShaderApp extends Application {
     }
 
     public void createComputeShader(String name, String filePath) {
-        computeProgramShaderId = glCreateProgram();
+        int computeProgramShaderId = glCreateProgram();
         logger.debug("Created {} program (id {})", name, computeProgramShaderId);
+        computeShaderMap.put(name, computeProgramShaderId);
 
         int shaderId = glCreateShader(GL_COMPUTE_SHADER);
 
@@ -407,6 +429,13 @@ public class ShaderApp extends Application {
 
     public void processSteps(List<Runnable> steps) {
         processSteps = steps;
+    }
+
+    public void usingProgram(String program, Runnable step) {
+        int programId = computeShaderMap.get(program);
+        glUseProgram(programId);
+        step.run();
+        glUseProgram(0);
     }
 
     public void display(String textureName) {

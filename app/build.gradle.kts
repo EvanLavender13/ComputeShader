@@ -1,6 +1,7 @@
 val lwjglVersion = "3.3.3"
 val lwjglNatives = "natives-windows"
 val imguiVersion = "1.86.11"
+val jomlVersion = "1.10.5"
 
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
@@ -34,6 +35,7 @@ dependencies {
 	runtimeOnly("org.lwjgl", "lwjgl-nuklear", classifier = lwjglNatives)
 	runtimeOnly("org.lwjgl", "lwjgl-openal", classifier = lwjglNatives)
 	runtimeOnly("org.lwjgl", "lwjgl-opengl", classifier = lwjglNatives)
+    implementation("org.joml", "joml", jomlVersion)
 
     implementation("io.github.spair:imgui-java-app:$imguiVersion")
 }

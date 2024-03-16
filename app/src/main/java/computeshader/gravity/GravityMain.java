@@ -37,13 +37,13 @@ public class GravityMain {
 
             app.createComputeShader("GravityShader", "/gravity.glsl");
 
-            app.createStorageBuffer("ShaderParameters", new float[] {
+            app.createStorageBuffer("GravityShader", "ShaderParameters", new float[] {
                     (float) textureWidth,
                     (float) textureHeight,
             });
 
             logger.info("Creating {} objects", numObjects);
-            app.createStorageBuffer("ObjectData", ObjectUtil.createObjects(numObjects, textureWidth, textureHeight));
+            app.createStorageBuffer("GravityShader", "ObjectData", ObjectUtil.createObjects(numObjects, textureWidth, textureHeight));
         });
 
         app.gui(() -> {

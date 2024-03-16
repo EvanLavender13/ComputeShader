@@ -144,10 +144,18 @@ public class AgentUtil {
 
         Random random = new Random();
 
+        float centerX = width / 2.0f;
+        float centerY = height / 2.0f;
+
         for (int i = 0; i < n; i++) {
+            float radius = min(width, height) / 256.0f * (float) sqrt(random());
+            float theta = (float) (random() * 2 * PI);
+            float x = (float) (centerX + radius * cos(theta));
+            float y = (float) (centerY + radius * sin(theta));
+
             // position + rotation
-            agents[i * AGENT_SIZE_F + 0] = (float) (random() * width);
-            agents[i * AGENT_SIZE_F + 1] = (float) (random() * height);
+            agents[i * AGENT_SIZE_F + 0] = x;
+            agents[i * AGENT_SIZE_F + 1] = y;
             agents[i * AGENT_SIZE_F + 2] = (float) (random() * 360.0);
 
             Color color = randomColor(random);
@@ -164,18 +172,18 @@ public class AgentUtil {
     public static float[] nAgentsGradient(int n, int width, int height) {
         float[] agents = new float[n * AGENT_SIZE_F];
 
-        // Random random = new Random();
-        // Color colorA = randomColor(random);
-        // Color colorB = randomColor(random);
+        Random random = new Random();
+        Color colorA = randomColor(random);
+        Color colorB = randomColor(random);
 
-        Color colorA = Color.RED;
-        Color colorB = Color.BLUE;
+        // Color colorA = Color.RED;
+        // Color colorB = Color.BLUE;
 
         float centerX = width / 2.0f;
         float centerY = height / 2.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 64.0f * (float) sqrt(random());
+            float radius = min(width, height) / 256.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -218,7 +226,7 @@ public class AgentUtil {
         float centerY = height / 2.0f;
 
         for (int i = 0; i < n; i++) {
-            float radius = min(width, height) / 64.0f * (float) sqrt(random());
+            float radius = min(width, height) / 256.0f * (float) sqrt(random());
             float theta = (float) (random() * 2 * PI);
             float x = (float) (centerX + radius * cos(theta));
             float y = (float) (centerY + radius * sin(theta));
@@ -253,7 +261,7 @@ public class AgentUtil {
     private static Color randomColor(Random random) {
         final float hue = random.nextFloat();
         final float saturation = 1.0f;
-        final float luminance = random.nextFloat();
+        final float luminance = 1.0f;
         return Color.getHSBColor(hue, saturation, luminance);
     }
 

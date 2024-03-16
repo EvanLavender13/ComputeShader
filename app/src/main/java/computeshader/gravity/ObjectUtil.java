@@ -12,14 +12,14 @@ public class ObjectUtil {
         objects[0 * OBJECT_SIZE_F + 1] = (float) height / 2.0f;
         objects[0 * OBJECT_SIZE_F + 2] = 0.0f;
         objects[0 * OBJECT_SIZE_F + 3] = 0.0f;
-        objects[0 * OBJECT_SIZE_F + 4] = 10000.0f;
+        objects[0 * OBJECT_SIZE_F + 4] = 1000.0f;
 
         for (int i = 1; i < n; i++) {
             objects[i * OBJECT_SIZE_F + 0] = (float) (random() * width);
             objects[i * OBJECT_SIZE_F + 1] = (float) (random() * height);
-            objects[i * OBJECT_SIZE_F + 2] = (float) (0.5 - random()) * 2.0f * 200.0f;
-            objects[i * OBJECT_SIZE_F + 3] = (float) (0.5 - random()) * 2.0f * 200.0f;
-            objects[i * OBJECT_SIZE_F + 4] = (float) random() * 10.0f;
+            objects[i * OBJECT_SIZE_F + 2] = (float) (0.5 - random()) * 2.0f * 1.0f;
+            objects[i * OBJECT_SIZE_F + 3] = (float) (0.5 - random()) * 2.0f * 1.0f;
+            objects[i * OBJECT_SIZE_F + 4] = (float) random() * 100.0f;
         }
 
         return objects;
