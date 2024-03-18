@@ -14,13 +14,13 @@ import static org.lwjgl.glfw.GLFW.glfwSetInputMode;
 import static org.lwjgl.glfw.GLFW.glfwSetScrollCallback;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Math;
 import org.joml.Matrix4f;
+import org.joml.Random;
 import org.joml.Vector3f;
 
 import computeshader.core.ShaderApp;
@@ -37,8 +37,9 @@ public class RayTracer {
     private String title = "RayTracer";
     private int windowWidth = 1600;
     private int windowHeight = 900;
-    private int textureWidth = 1920;
-    private int textureHeight = 1080;
+    private float aspectRatio = (float) windowWidth / windowHeight;
+    private int textureWidth = 1024;
+    private int textureHeight = (int) (textureWidth / aspectRatio);
 
     private double currentTime = 0.0f;
     private double previousFrameTime = 0.0;
@@ -50,6 +51,7 @@ public class RayTracer {
     private double[] yMouse = new double[1];
 
     private Scene scene;
+    private int[] numSamples = new int[] { 10 };
 
     public RayTracer() {
         app = new ShaderApp(new ShaderAppConfiguration(title, windowWidth, windowHeight, textureWidth, textureHeight));
@@ -58,12 +60,26 @@ public class RayTracer {
             camera = new Camera(textureWidth, textureHeight);
 
             scene = new Scene();
-            int pink = scene.addMaterial(new Material(new Vector3f(1.0f, 0.0f, 1.0f), 0.0f, 0.0f));
-            int blue = scene.addMaterial(new Material(new Vector3f(0.2f, 0.3f, 1.0f), 0.1f, 0.0f));
-            scene.addSphere(new Sphere(new Vector3f(0.0f), 1.0f, pink));
-            scene.addSphere(new Sphere(new Vector3f(0.0f, -101.0f, 0.0f), 100.0f, blue));
+            int ground = scene.addMaterial(new Material(new Vector3f(0.5f, 0.5f, 0.5f), new float[] { 1.0f }, new float[] { 1.0f }, 0.0f));
+            scene.addSphere(new Sphere(new float[] { 0.0f, -1000.0f, 0.0f }, 1000.0f, ground));
 
-            logger.info("Created {}", scene);
+            Random random = new Random();
+
+            int n = 5;
+
+            for (int i = -n; i < n; i++) {
+                for (int j = -n; j < n; j++) {
+                    Vector3f albedo = new Vector3f(random.nextFloat(), random.nextFloat(), random.nextFloat());
+                    int material = scene.addMaterial(new Material(albedo, new float[] { random.nextFloat() }, new float[] { random.nextFloat() }, 0.0f));
+
+                    float[] center = new float[] { i + 0.9f * random.nextFloat(), 0.2f /*+ random.nextInt(10)*/, j + 0.9f * random.nextFloat() };
+                    scene.addSphere(new Sphere(center, 0.2f, material));
+                }
+            }
+
+            // logger.info("Created {}", scene);
+            logger.info("Scene materials: {}", scene.materials.size());
+            logger.info("Scene spheres: {}", scene.spheres.size());
         });
 
         app.preRun(() -> {
@@ -74,6 +90,7 @@ public class RayTracer {
             app.addUniform("InvProjection");
             app.addUniform("InvView");
             app.addUniform("Time");
+            app.addUniform("Samples");
 
             app.createComputeShader("RayShader", "/raytrace.glsl");
 
@@ -102,6 +119,45 @@ public class RayTracer {
 
             if (ImGui.sliderAngle("Vertical FoV", camera.getVerticalFov())) {
                 camera.calculateProjection();
+            }
+
+            if (ImGui.sliderInt("Samples", numSamples, 1, 100)) {
+                
+            }            
+
+            if (ImGui.treeNode("Scene")) {
+                if (ImGui.treeNode("Materials")) {
+                    for (int i = 0; i < scene.materials.size(); i++) {
+                        Material material = scene.materials.get(i);
+                        if (ImGui.treeNode("Material " + i)) {
+                            if (ImGui.sliderFloat("Roughness", material.roughness, 0.0f, 1.0f)) {
+                                app.updateStorageBuffer("MaterialParameters", 6 * i + 3, material.roughness);
+                            }
+                            if (ImGui.sliderFloat("Metallic", material.metallic, 0.0f, 1.0f)) {
+                                app.updateStorageBuffer("MaterialParameters", 6 * i + 4, material.metallic);
+                            }                            
+
+                            ImGui.treePop();
+                        }
+                    }
+                    ImGui.treePop();
+                }
+                if (ImGui.treeNode("Spheres")) {
+                    for (int i = 0; i < scene.spheres.size(); i++) {
+                        if (ImGui.treeNode("Sphere " + i)) {
+                            Sphere sphere = scene.spheres.get(i);
+                            if (ImGui.dragFloat3("Center", sphere.position)) {
+                                app.updateStorageBuffer("SphereParameters", 5 * i + 0, sphere.position);
+                            };
+
+                            ImGui.treePop();
+                        }
+                    }
+
+                    ImGui.treePop();
+                }
+
+                ImGui.treePop();
             }
         });
 
@@ -139,6 +195,7 @@ public class RayTracer {
                 app.setMatrix4fUniform("InvProjection", camera.getInvProjection());
                 app.setMatrix4fUniform("InvView", camera.getInvView());
                 app.setFloatUniform("Time", (float) currentTime);
+                app.setUIntUniform("Samples", numSamples[0]);
 
                 int[] workGroupSize = app.getWorkGroupSize("RayShader");
                 app.runComputeShader(textureWidth / workGroupSize[0], textureHeight / workGroupSize[1]);
@@ -199,10 +256,6 @@ public class RayTracer {
             view.invert(invView);
         }
 
-        private void calculateRays() {
-            // TODO: do in shader
-        }
-
         private void calculateProjection() {
             float aspectRatio = viewportWidth / viewportHeight;
             projection.setPerspective(verticalFov[0], aspectRatio, nearClip, farClip);
@@ -258,10 +311,10 @@ public class RayTracer {
         }
     }
 
-    private record Material(Vector3f albedo, float roughness, float metallic) {
+    private record Material(Vector3f albedo, float[] roughness, float[] metallic, float refraction) {
     }
 
-    private record Sphere(Vector3f position, float radius, int materialIndex) {
+    private record Sphere(float[] position, float radius, int materialIndex) {
     }
 
     private class Scene {
@@ -283,15 +336,17 @@ public class RayTracer {
         }
 
         public float[] getMaterialParameters() {
-            float[] params = new float[5 * materials.size()];
+            int size = 6;
+            float[] params = new float[size * materials.size()];
             for (int i = 0; i < materials.size(); i++) {
                 Material material = materials.get(i);
                 Vector3f albedo = material.albedo;
-                params[5 * i + 0] = albedo.x;
-                params[5 * i + 1] = albedo.y;
-                params[5 * i + 2] = albedo.z;
-                params[5 * i + 3] = material.roughness;
-                params[5 * i + 4] = material.metallic;
+                params[size * i + 0] = albedo.x;
+                params[size * i + 1] = albedo.y;
+                params[size * i + 2] = albedo.z;
+                params[size * i + 3] = material.roughness[0];
+                params[size * i + 4] = material.metallic[0];
+                params[size * i + 5] = material.refraction;
             }
 
             return params;
@@ -301,12 +356,12 @@ public class RayTracer {
             float[] params = new float[5 * spheres.size()];
             for (int i = 0; i < spheres.size(); i++) {
                 Sphere sphere = spheres.get(i);
-                Vector3f position = sphere.position;
-                params[5 * i + 0] = position.x;
-                params[5 * i + 1] = position.y;
-                params[5 * i + 2] = position.z;
+                float[] position = sphere.position;
+                params[5 * i + 0] = position[0];
+                params[5 * i + 1] = position[1];
+                params[5 * i + 2] = position[2];
                 params[5 * i + 3] = sphere.radius;
-                params[5 * i + 4] = sphere.materialIndex;          
+                params[5 * i + 4] = sphere.materialIndex;
             }
 
             return params;

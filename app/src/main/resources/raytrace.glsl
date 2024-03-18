@@ -3,6 +3,62 @@
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
 #define M_PI 3.1415926535897932384626433832795
+#define EPSILON 1e-8;
+
+float LengthSquared(in vec3 v) {
+    return v.x * v.x + v.y * v.y + v.z * v.z;
+}
+
+bool NearZero(in vec3 v) {
+    return true;
+}
+
+// PCG (permuted congruential generator). Thanks to:
+// www.pcg-random.org and www.shadertoy.com/view/XlGcRh
+uint NextRandom(inout uint state) {
+    state = state * 747796405 + 2891336453;
+    uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+    result = (result >> 22) ^ result;
+    return result;
+}
+
+float RandomValue(inout uint state) {
+    return NextRandom(state) / 4294967295.0; // 2^32 - 1
+}
+
+float RandomValue(inout uint state, float min, float max) {
+    return min + (max - min) * RandomValue(state);
+}
+
+vec3 RandomVec3(inout uint state) {
+    return vec3(RandomValue(state), RandomValue(state), RandomValue(state));
+}
+
+vec3 RandomVec3(inout uint state, float min, float max) {
+    return vec3(RandomValue(state, min, max), RandomValue(state, min, max), RandomValue(state, min, max));
+}
+
+vec3 RandomInUnitSphere(inout uint state) {
+    while (true) {
+        vec3 r = RandomVec3(state, -1.0f, 1.0f);
+        if (LengthSquared(r) < 1.0f) {
+            return r;
+        }
+    }
+}
+
+vec3 RandomUnitVector(inout uint state) {
+    return normalize(RandomInUnitSphere(state));
+}
+
+vec3 RandomOnHemisphere(inout uint state, vec3 normal) {
+    vec3 u = RandomUnitVector(state);
+    if (dot(u, normal) > 0.0f) {
+        return u;
+    } else {
+        return -u;
+    }
+}
 
 layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -18,6 +74,7 @@ struct Material {
     float r, g, b;
     float roughness;
     float metallic;
+    float refraction;
 };
 
 layout (std430) restrict buffer MaterialParameters {
@@ -38,136 +95,147 @@ uniform vec3 CameraPosition;
 uniform mat4 InvProjection;
 uniform mat4 InvView;
 uniform float Time;
+uniform uint Samples;
 
 struct Ray {
     vec3 origin;
     vec3 direction;
 };
 
-struct HitRecord {
-    float t;
-    vec3 position;
-    vec3 normal;
+vec3 RayAt(in Ray ray, float t) {
+    return ray.origin + t * ray.direction;
+}
 
-    int objectIndex;
+struct HitRecord {
+    vec3 point;
+    vec3 normal;
+    uint materialIndex;
+    float t;
 };
 
-HitRecord Miss(Ray ray) {
-    HitRecord record;
-    record.t = -1.0f;
-    return record;
+struct Interval {
+    float min, max;
+};
+
+bool Contains(in Interval i, float v) {
+    return i.min <= v && v <= i.max;
 }
 
-HitRecord ClosestHit(Ray ray, float t, int objectIndex) {
-    HitRecord record;
-    record.t = t;
-    record.objectIndex = objectIndex;
-
-    Sphere sphere = Spheres[objectIndex];
-    vec3 position = vec3(sphere.x, sphere.y, sphere.z);
-
-    vec3 origin = ray.origin - position;
-    record.position = origin + ray.direction * t;
-    record.normal = (record.position - position) / sphere.radius;
-    // record.normal = normalize(record.position);
-    //record.position += position;
-
-    return record;
+bool Surrounds(in Interval i, float v) {
+    return i.min < v && v < i.max;
 }
 
-HitRecord TraceRay(Ray ray, float tMin, float tMax) {
-    int closestObject = -1;
-    float hitDistance = FLT_MAX;
+float Clamp(in Interval i, float v) {
+    if (v < i.min) {
+        return i.min;
+    }
+
+    if (v > i.max) {
+        return i.max;
+    }
+
+    return v;
+}
+
+bool HitSphere(in Sphere sphere, in Ray ray, in Interval tInt, inout HitRecord record) {
+    vec3 center = vec3(sphere.x, sphere.y, sphere.z);
+    vec3 oc = ray.origin - center;
+    float a = LengthSquared(ray.direction);
+    float b = dot(oc, ray.direction);
+    float c = LengthSquared(oc) - sphere.radius * sphere.radius;
+    float disc = b * b - a * c;
+    if (disc < 0.0f) {
+        return false;
+    }
+    
+    float root = (-b - sqrt(disc)) / a;
+    if (!Surrounds(tInt, root)) {
+        (-b + sqrt(disc)) / a;
+        if (!Surrounds(tInt, root)) {
+            return false;
+        }
+    }
+
+    record.t = root;
+    record.point = RayAt(ray, record.t);
+    record.normal = (record.point - center) / sphere.radius;
+    record.materialIndex = uint(sphere.materialIndex);
+
+    return true;
+}
+
+bool HitAnything(in Ray ray, in Interval tInt, inout HitRecord record) {
+    HitRecord r;
+    bool hit = false;
+    float closest = tInt.max;
+
     for (int i = 0; i < Spheres.length(); i++) {
         Sphere sphere = Spheres[i];
-        vec3 position = vec3(sphere.x, sphere.y, sphere.z);
-        vec3 origin = ray.origin - position;
-
-        float a = dot(ray.direction, ray.direction);
-        float b = 2.0f * dot(origin, ray.direction);
-        float c = dot(origin, origin) - sphere.radius * sphere.radius;
-
-        float discriminant = b * b - 4.0f * a * c;
-        if (discriminant < 0.0f) {
-            continue;
+        if (HitSphere(sphere, ray, Interval(tInt.min, closest), r)) {
+            hit = true;
+            closest = r.t;
+            record = r;
         }
-
-        float sqrtDiscriminant = sqrt(discriminant);
-        float t = (-b - sqrtDiscriminant) / (2.0f * a);
-        // if (t <= tMin || t >= tMax) {
-        //     t = (-b + sqrtDiscriminant) / (2.0f * a);
-        //     if (t <= tMin || t >= tMax) {
-        //         continue;
-        //     }
-        // }
-
-        if (t > 0.0f && t < hitDistance) {
-            hitDistance = t;
-            closestObject = i;
-        }
-
-        if (closestObject < 0) {
-            return Miss(ray);
-        }
-
-        return ClosestHit(ray, t, closestObject);
     }
+
+    return hit;
 }
 
-vec3 PerPixel(float xCoord, float yCoord, inout uint rngState) {
-    int numSamples = 10;
-    int numBounces = 10;
-    vec3 totalColor = vec3(0.0f);
-    for (int i = 0; i < numSamples; i++) {
-        Ray ray;
-        ray.origin = CameraPosition;
-        vec2 coord = vec2(xCoord, yCoord);
-        vec4 target = InvProjection * vec4(coord, 1.0f, 1.0f);
-        vec3 jitter = RandomDirection(rngState) * 0.5f / Params.width;
-        target.xyz += jitter;
+vec3 LambertianScatter(in HitRecord record, inout uint rngState) {
+    vec3 direction = record.normal + RandomUnitVector(rngState);
+    return direction;
+}
 
-        ray.direction = vec3(InvView * vec4(normalize(vec3(target) / target.w), 0.0f));
+vec3 RayColor(in Ray ray, inout uint rngState) {
+    Ray currentRay = ray;
+    vec3 attenuation = vec3(1.0f);
 
-        float closest = FLT_MAX;
-        vec3 color = vec3(1.0f);
-        vec3 incoming = vec3(0.0f);
-        for (int j = 0; j < numBounces; j++) {
-            HitRecord record = TraceRay(ray, 0.0001f, closest);
-            if (record.t > 0.0f) {
-                Sphere sphere = Spheres[record.objectIndex];
-                Material material = Materials[int(sphere.materialIndex)];
+    int numBounces = 50;
+    for (int i = 0; i < numBounces; i++) {
+        HitRecord record;
 
-                vec3 materialColor = vec3(material.r, material.g, material.b);
-                color *= materialColor;
+        if (HitAnything(currentRay, Interval(0.001f, FLT_MAX), record)) {
+            Material material = Materials[record.materialIndex];
+            attenuation *= vec3(material.r, material.g, material.b);
 
-                ray.origin = record.position + record.normal * 0.0001f;
-                ray.direction = randomHemispherePoint(record.normal, randvec2(j));
-            } else {
-                // float a = 0.5f * (normalize(ray.direction).y + 1.0f);
-                // vec3 env = ((1.0f - a) * vec3(1.0f) + a * vec3(0.5f, 0.7f, 1.0f));
-                vec3 env = vec3(0.5f);
-                incoming += env * color;
-                break;
-            }
+            vec3 diffuse = record.normal + RandomUnitVector(rngState);
+            currentRay.origin = record.point;
+            currentRay.direction = diffuse;
+            // vec3 reflect = reflect(currentRay.direction, record.normal) + RandomUnitVector(rngState) * (1.0f - material.metallic);
+            // currentRay = Ray(record.point, mix(reflect, diffuse, material.roughness));
+
+            // vec3 diffuse = record.normal + RandomUnitVector(rngState);
+            // vec3 reflect = reflect(currentRay.direction, record.normal) + RandomUnitVector(rngState) * material.roughness;
+            // currentRay = Ray(record.point, mix(diffuse, reflect, material.metallic));            
+        } else {
+            vec3 unitDirection = normalize(ray.direction);
+            float t = 0.5f * (unitDirection.y + 1.0f);
+            vec3 color = (1.0f - t) * vec3(1.0f) + t * vec3(0.5f, 0.7f, 1.0f);
+            return color * attenuation;
         }
-
-        totalColor += incoming;
     }
-
-    return totalColor / numSamples;
+    
+    return vec3(0.0f);
 }
 
 void main() {
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 index = ivec2(gid.x, Params.height - gid.y);
-    px = index;
-    // uint rngState = int(index.y * Params.width + index.x + Time * 9384934);
-    uint rngState = uint(Params.width * Time);
+    uint pixelIndex = gid.y * uint(Params.width) + gid.x;
+    uint rngState = uint(pixelIndex);
 
+    // ivec2 index = ivec2(gid.x, Params.height - gid.y);
     float aspectRatio = Params.width / Params.height;
-    float xCoord = index.x / Params.width * 2.0f - 1.0f;
-    float yCoord = (index.y / Params.height * 2.0f - 1.0f) / aspectRatio;
 
-    vec4 color = vec4(PerPixel(xCoord, yCoord, rngState), 1.0f);
-    imageStore(Image, index, color);
+    vec3 color = vec3(0.0f);
+    for (int i = 0; i < Samples; i++) {
+        float xCoord = (gid.x + (RandomValue(rngState) - 1.0f)) / Params.width * 2.0f - 1.0f;
+        float yCoord = ((gid.y + (RandomValue(rngState) - 1.0f)) / Params.height * 2.0f - 1.0f) / aspectRatio;
+        vec2 coord = vec2(xCoord, yCoord);
+
+        vec4 target = InvProjection * vec4(coord, 1.0f, 1.0f);
+        Ray ray = Ray(CameraPosition, vec3(InvView * vec4(normalize(vec3(target) / target.w), 0.0f)));
+        color += RayColor(ray, rngState);
+    }
+
+    imageStore(Image, gid, vec4(sqrt(color / Samples), 1.0f));
 }
